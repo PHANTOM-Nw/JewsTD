@@ -99,6 +99,8 @@ export interface Tower {
 export interface Bullet {
   id: string
   position: Position
+  originPosition: Position
+  attackRange: number
   targetId: string
   damage: number
   damageType: 'physical' | 'magic' | 'pure'

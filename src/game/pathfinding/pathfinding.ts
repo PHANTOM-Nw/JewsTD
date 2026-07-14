@@ -199,7 +199,7 @@ function findPathSegment(
  * 
  * 实现原理:
  * 1. 临时将该位置标记为'tower'
- * 2. 执行BFS寻路(经过矿坑)
+ * 2. 执行BFS寻路(经过配置的必经点)
  * 3. 如果能找到路径,说明不会堵死
  * 4. 恢复原状并返回结果
  * 
@@ -235,7 +235,7 @@ export function canPlaceTower(
   // 临时将该位置标记为塔
   grid[row][col].type = 'tower'
   
-  // 尝试寻路,检查是否还能从起点经过矿坑到达终点
+  // 尝试寻路,检查是否还能从起点经过必经点到达终点
   const path = findPath(grid, startPos, endPos)
   
   // 恢复原状(重要:必须恢复,否则会影响游戏状态)

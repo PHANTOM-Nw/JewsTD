@@ -39,6 +39,17 @@ export function canStartConfiguredWave(
   return gameStatus === 'ready' && currentWave < totalWaves && hasPath
 }
 
+export function canInspectSynthesisFromTower(gameStatus: GameStatus): boolean {
+  return gameStatus === 'building'
+    || gameStatus === 'ready'
+    || gameStatus === 'playing'
+    || gameStatus === 'paused'
+}
+
+export function canSynthesizeTowers(gameStatus: GameStatus): boolean {
+  return gameStatus === 'building' || gameStatus === 'ready'
+}
+
 export function getStatusAfterWave(currentWave: number, totalWaves: number): GameStatus {
   return currentWave >= totalWaves ? 'victory' : 'building'
 }

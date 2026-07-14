@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   canFinalizeTowerBatch,
+  canInspectSynthesisFromTower,
+  canSynthesizeTowers,
   canStartConfiguredWave,
   getStateAfterMineDamage,
   getStatusAfterPlacement,
@@ -33,6 +35,23 @@ describe('build and wave flow', () => {
     expect(canStartConfiguredWave('deciding', 0, 12, true)).toBe(false)
     expect(canStartConfiguredWave('ready', 0, 12, false)).toBe(false)
     expect(canStartConfiguredWave('ready', 12, 12, true)).toBe(false)
+  })
+
+  it('allows existing towers to open the synthesis list during preparation and combat', () => {
+    expect(canInspectSynthesisFromTower('building')).toBe(true)
+    expect(canInspectSynthesisFromTower('ready')).toBe(true)
+    expect(canInspectSynthesisFromTower('playing')).toBe(true)
+    expect(canInspectSynthesisFromTower('paused')).toBe(true)
+    expect(canInspectSynthesisFromTower('deciding')).toBe(false)
+    expect(canInspectSynthesisFromTower('game_over')).toBe(false)
+    expect(canInspectSynthesisFromTower('victory')).toBe(false)
+  })
+
+  it('keeps synthesis actions locked while a wave is active', () => {
+    expect(canSynthesizeTowers('building')).toBe(true)
+    expect(canSynthesizeTowers('ready')).toBe(true)
+    expect(canSynthesizeTowers('playing')).toBe(false)
+    expect(canSynthesizeTowers('paused')).toBe(false)
   })
 
   it('moves directly to victory after the final configured wave', () => {

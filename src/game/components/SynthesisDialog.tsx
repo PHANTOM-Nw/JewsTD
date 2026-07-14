@@ -12,6 +12,7 @@ import {
 
 interface SynthesisDialogProps {
   storedTowers: Tower[]
+  canSynthesize: boolean
   onSynthesize: (towerId1: string, towerId2: string) => boolean
   onSynthesizeSpecial?: (specialType: SpecialTowerType) => boolean
   onClose: () => void
@@ -31,6 +32,7 @@ const getNextLevelName = (level: 'chipped' | 'flawed' | 'normal') => {
 
 export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
   storedTowers,
+  canSynthesize,
   onSynthesize,
   onSynthesizeSpecial,
   onClose
@@ -64,7 +66,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
   }
 
   const handleSynthesize = () => {
-    if (!selectedTower1 || !selectedTower2) {
+    if (!canSynthesize || !selectedTower1 || !selectedTower2) {
       return
     }
 
@@ -72,7 +74,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
   }
 
   const handleSynthesizeSpecial = (specialType: SpecialTowerType) => {
-    if (!onSynthesizeSpecial) {
+    if (!canSynthesize || !onSynthesizeSpecial) {
       return
     }
 
@@ -99,6 +101,20 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
             ✕ 关闭
           </button>
         </div>
+
+        {!canSynthesize && (
+          <div style={{
+            marginBottom: '20px',
+            padding: '10px 12px',
+            background: '#FFF3E0',
+            border: '1px solid #FFB74D',
+            borderRadius: '4px',
+            color: '#E65100',
+            fontSize: '13px'
+          }}>
+            波次进行中：当前仅可查看合成列表，合成操作将在备战阶段开放。
+          </div>
+        )}
 
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ margin: '0 0 10px 0', color: '#666', fontSize: '16px' }}>
@@ -132,7 +148,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                     <div style={{ fontSize: '12px', color: '#4CAF50', marginBottom: '8px' }}>
                       ✓ 材料已集齐
                     </div>
-                    {onSynthesizeSpecial && (
+                    {onSynthesizeSpecial && canSynthesize && (
                       <button
                         onClick={() => handleSynthesizeSpecial(tower.type)}
                         style={{
@@ -210,13 +226,19 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                   <div
                     key={`${tower1.id}:${tower2.id}`}
                     onClick={() => {
+                      if (!canSynthesize) return
+
                       setSelectedTower1(tower1.id)
                       setSelectedTower2(tower2.id)
                     }}
                     onMouseEnter={event => {
+                      if (!canSynthesize) return
+
                       event.currentTarget.style.background = '#F5F5F5'
                     }}
                     onMouseLeave={event => {
+                      if (!canSynthesize) return
+
                       event.currentTarget.style.background = isSelected ? '#E3F2FD' : 'white'
                     }}
                     style={{
@@ -224,7 +246,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                       background: isSelected ? '#E3F2FD' : 'white',
                       border: isSelected ? '2px solid #2196F3' : '2px solid #DDD',
                       borderRadius: '6px',
-                      cursor: 'pointer',
+                      cursor: canSynthesize ? 'pointer' : 'default',
                       transition: 'all 0.2s'
                     }}
                   >
@@ -280,7 +302,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
           )}
         </div>
 
-        {selectedTower1 && selectedTower2 && (
+        {canSynthesize && selectedTower1 && selectedTower2 && (
           <div style={{
             marginTop: '20px',
             padding: '15px',

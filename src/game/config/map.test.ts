@@ -15,13 +15,15 @@ describe('map configuration', () => {
     vi.restoreAllMocks()
   })
 
-  it('initializes the configured grid and special cells', () => {
+  it('initializes the configured grid without a special center cell', () => {
     const grid = initializeGrid()
+    const centerRow = Math.floor(MAP_CONFIG.rows / 2)
+    const centerCol = Math.floor(MAP_CONFIG.cols / 2)
 
     expect(grid).toHaveLength(MAP_CONFIG.rows)
     expect(grid.every(row => row.length === MAP_CONFIG.cols)).toBe(true)
     expect(grid[MAP_CONFIG.startPos.row][MAP_CONFIG.startPos.col].type).toBe('start')
-    expect(grid[MAP_CONFIG.minePos.row][MAP_CONFIG.minePos.col].type).toBe('mine')
+    expect(grid[centerRow][centerCol].type).toBe('empty')
     expect(grid[MAP_CONFIG.endPos.row][MAP_CONFIG.endPos.col].type).toBe('end')
   })
 

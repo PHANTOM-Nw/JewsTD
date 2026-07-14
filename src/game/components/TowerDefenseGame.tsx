@@ -7,6 +7,7 @@ import { SynthesisDialog } from './SynthesisDialog'
 import type { GemType, GemLevel, Tower } from '../types/game'
 import { GEM_COLORS, GEM_NAMES, LEVEL_NAMES } from '../config/towers'
 import { ECONOMY_CONFIG } from '../config/economy'
+import { canInspectSynthesisFromTower, canSynthesizeTowers } from '../engine/gameFlow'
 import './TowerDefenseGame.css'
 
 export const TowerDefenseGame: React.FC = () => {
@@ -60,7 +61,7 @@ export const TowerDefenseGame: React.FC = () => {
         
         if (isCurrentBatch && uiState.gameStatus === 'deciding') {
           setSelectedTowerForDecision(existingTower)
-        } else if (uiState.gameStatus === 'building' || uiState.gameStatus === 'ready') {
+        } else if (canInspectSynthesisFromTower(uiState.gameStatus)) {
           setShowSynthesisDialog(true)
         }
         
@@ -159,7 +160,6 @@ export const TowerDefenseGame: React.FC = () => {
         onStartWave={handleStartWave}
         onPause={handlePause}
         onResume={handleResume}
-        onOpenSynthesis={() => setShowSynthesisDialog(true)}
         onUpgradeGameLevel={upgradeGameLevel}  // ✅ 新增
         onResetGame={handleResetGame}
       />
@@ -301,6 +301,7 @@ export const TowerDefenseGame: React.FC = () => {
       {showSynthesisDialog && (
         <SynthesisDialog
           storedTowers={gameStateRef.current.storedTowers}
+          canSynthesize={canSynthesizeTowers(uiState.gameStatus)}
           onSynthesize={(id1, id2) => {
             console.log('尝试合成:', id1, id2)
             return synthesizeTowers(id1, id2)

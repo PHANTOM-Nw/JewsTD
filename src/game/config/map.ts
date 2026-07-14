@@ -5,7 +5,6 @@ export const MAP_CONFIG = {
   cols: 20,
   cellSize: 40, // 每个格子的像素大小
   startPos: { row: 0, col: 2 },      // 起点(顶部绿色区域)
-  minePos: { row: 7, col: 10 },       // 矿坑(中心黄色区域)
   endPos: { row: 14, col: 19 }        // 终点(右下角红色区域)
 }
 
@@ -26,7 +25,7 @@ export const MAP_CONFIG = {
  * - 5: 转折点5(蓝色,右下) (12,10)
  * - 6: 终点(红色,右下) (14,19)
  * 
- * 注意: 矿坑(7,10)不再是必经点,但仍在地图上显示(MAP_CONFIG.minePos)
+ * 注意: 地图中央不设置特殊格,与其他空格一样可用于建造
  */
 export const WAYPOINTS: Array<{ row: number; col: number; label?: string }> = [
   { row: 0, col: 2, label: '起点' },           // 0: 起点(顶部绿色区域)
@@ -40,7 +39,7 @@ export const WAYPOINTS: Array<{ row: number; col: number; label?: string }> = [
 
 // 初始化空地图(无预定义障碍物)
 export function initializeGrid(): GridCell[][] {
-  const { rows, cols, startPos, endPos, minePos } = MAP_CONFIG
+  const { rows, cols, startPos, endPos } = MAP_CONFIG
   const grid: GridCell[][] = []
   
   for (let row = 0; row < rows; row++) {
@@ -50,9 +49,6 @@ export function initializeGrid(): GridCell[][] {
         grid[row][col] = { row, col, type: 'start' }
       } else if (row === endPos.row && col === endPos.col) {
         grid[row][col] = { row, col, type: 'end' }
-      } else if (row === minePos.row && col === minePos.col) {
-        // 矿坑位置(地图中央)
-        grid[row][col] = { row, col, type: 'mine' }
       } else {
         // 其他位置都是空的,玩家可以自由放置塔或障碍物
         grid[row][col] = { row, col, type: 'empty' }
@@ -62,7 +58,6 @@ export function initializeGrid(): GridCell[][] {
   
   console.log('✅ 地图初始化完成:', {
     起点: startPos,
-    矿坑: minePos,
     终点: endPos,
     必经点数量: WAYPOINTS.length,
     说明: '初始为空网格,玩家可自由设计路径'

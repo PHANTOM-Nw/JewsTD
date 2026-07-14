@@ -19,7 +19,6 @@ interface GameUIProps {
   onStartWave: () => void
   onPause: () => void
   onResume: () => void
-  onOpenSynthesis?: () => void
   onUpgradeGameLevel?: () => void  // ✅ 新增: 升级游戏等级回调
   onResetGame: () => void
 }
@@ -29,7 +28,6 @@ export const GameUI: React.FC<GameUIProps> = ({
   onStartWave,
   onPause,
   onResume,
-  onOpenSynthesis,
   onUpgradeGameLevel,
   onResetGame
 }) => {
@@ -243,38 +241,6 @@ export const GameUI: React.FC<GameUIProps> = ({
           </button>
         )}
         
-        {/* 合成按钮 */}
-        {onOpenSynthesis && (
-          <button
-            onClick={onOpenSynthesis}
-            disabled={!isPreparationPhase}
-            style={{
-              padding: '10px 20px',
-              background: isPreparationPhase ? '#FF9800' : '#9E9E9E',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isPreparationPhase ? 'pointer' : 'not-allowed',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              if (!isPreparationPhase) return
-              e.currentTarget.style.background = '#F57C00'
-              e.currentTarget.style.transform = 'translateY(-2px)'
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = isPreparationPhase ? '#FF9800' : '#9E9E9E'
-              e.currentTarget.style.transform = 'translateY(0)'
-              e.currentTarget.style.boxShadow = 'none'
-            }}
-          >
-          🔧 合成
-          </button>
-        )}
-
         {(uiState.gameStatus === 'game_over' || uiState.gameStatus === 'victory') && (
           <button
             onClick={onResetGame}

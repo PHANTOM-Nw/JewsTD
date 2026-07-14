@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Enemy, Tower } from '../types/game'
 import {
   PIERCE_DAMAGE_MULTIPLIER,
+  advanceBullet,
   advancePoisonEffects,
   advanceTimedEffects,
   applyEnemyDamage,
@@ -107,6 +108,34 @@ describe('tower targeting', () => {
       'pure',
       nearest
     ).damage).toBe(60)
+  })
+})
+
+describe('projectile range', () => {
+  it('discards a projectile before impact when its target leaves tower range', () => {
+    const target = createEnemy('target', 0, 0, 101)
+
+    expect(advanceBullet({
+      position: { x: 99, y: 0 },
+      originPosition: { x: 0, y: 0 },
+      attackRange: 100,
+      speed: 300
+    }, target, 100)).toEqual({
+      status: 'out_of_range',
+      position: { x: 99, y: 0 }
+    })
+    expect(target.health).toBe(100)
+  })
+
+  it('still allows an impact at the edge of tower range', () => {
+    const target = createEnemy('target', 0, 0, 100)
+
+    expect(advanceBullet({
+      position: { x: 95, y: 0 },
+      originPosition: { x: 0, y: 0 },
+      attackRange: 100,
+      speed: 300
+    }, target, 100).status).toBe('hit')
   })
 })
 

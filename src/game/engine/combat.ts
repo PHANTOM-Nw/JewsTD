@@ -1,4 +1,4 @@
-import type { Enemy, Tower } from '../types/game'
+import type { Bullet, Enemy, Position, Tower } from '../types/game'
 
 type DamageTarget = Pick<Enemy, 'armor' | 'magicResist'>
 type PoisonEffect = NonNullable<Enemy['poisonEffects']>[number]
@@ -26,6 +26,11 @@ export interface TimedEffectUpdate {
   slowEffect?: number
   isStunned: boolean
   stunTimer?: number
+}
+
+export interface BulletMovementUpdate {
+  status: 'moving' | 'hit' | 'out_of_range'
+  position: Position
 }
 
 export function calculateDamage(
@@ -64,6 +69,38 @@ export function selectTowerTargets(tower: Tower, enemies: Enemy[]): Enemy[] {
       return b.progress - a.progress
     })
     .slice(0, targetCount)
+}
+
+export function advanceBullet(
+  bullet: Pick<Bullet, 'position' | 'originPosition' | 'attackRange' | 'speed'>,
+  target: Pick<Enemy, 'position'>,
+  deltaTime: number
+): BulletMovementUpdate {
+  const targetDistanceFromOrigin = Math.hypot(
+    target.position.x - bullet.originPosition.x,
+    target.position.y - bullet.originPosition.y
+  )
+
+  if (targetDistanceFromOrigin > bullet.attackRange) {
+    return { status: 'out_of_range', position: bullet.position }
+  }
+
+  const dx = target.position.x - bullet.position.x
+  const dy = target.position.y - bullet.position.y
+  const distance = Math.hypot(dx, dy)
+  const moveDistance = Math.max(0, bullet.speed * Math.max(0, deltaTime) / 1000)
+
+  if (distance < 10 || moveDistance >= distance) {
+    return { status: 'hit', position: target.position }
+  }
+
+  return {
+    status: 'moving',
+    position: {
+      x: bullet.position.x + (dx / distance) * moveDistance,
+      y: bullet.position.y + (dy / distance) * moveDistance
+    }
+  }
 }
 
 export function selectPierceTarget(

@@ -36,7 +36,8 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
       }}>
         {gameStatus === 'playing' || gameStatus === 'paused' ? (
           <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#FF5722' }}>
-            🎮 波次{gameStatus === 'paused' ? '已暂停' : '进行中'}，不能放置塔
+            🎮 波次{gameStatus === 'paused' ? '已暂停' : '进行中'}，不能放置塔<br />
+            点击已有塔可查看合成列表
           </p>
         ) : gameStatus === 'deciding' ? (
           <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#7B1FA2' }}>
@@ -44,7 +45,7 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
           </p>
         ) : gameStatus === 'ready' ? (
           <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#2E7D32' }}>
-            本轮已完成，可合成、清除障碍或开始波次
+            本轮已完成，点击已有塔可合成，也可清障或开始波次
           </p>
         ) : gameStatus === 'game_over' || gameStatus === 'victory' ? (
           <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#666' }}>
@@ -60,6 +61,7 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
               <li>每次随机生成1个宝石</li>
               <li>共放置5次(消耗5木材)</li>
               <li>选择1个保留,其余变障碍</li>
+              <li>点击已有塔查看合成列表</li>
               <li style={{ color: '#FF6B6B', fontWeight: 'bold' }}>
                 ✨ 点击障碍物消耗{ECONOMY_CONFIG.obstacleRemovalGoldCost}金币删除
               </li>

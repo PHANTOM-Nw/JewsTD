@@ -27,6 +27,7 @@ import {
 } from './gameFlow'
 import {
   PIERCE_DAMAGE_MULTIPLIER,
+  advanceBullet,
   advancePoisonEffects,
   advanceTimedEffects,
   applyEnemyDamage,
@@ -846,6 +847,8 @@ export function useGameEngine() {
           const bullet: Bullet = {
             id: `bullet_${Date.now()}_${Math.random()}`,
             position: { ...tower.position },
+            originPosition: { ...tower.position },
+            attackRange: tower.range,
             targetId: target.id,
             damage: tower.damage,
             damageType: tower.damageType,
@@ -1007,20 +1010,17 @@ export function useGameEngine() {
         continue
       }
       
-      const dx = target.position.x - bullet.position.x
-      const dy = target.position.y - bullet.position.y
-      const distance = Math.sqrt(dx * dx + dy * dy)
-      
-      const moveDistance = bullet.speed * (deltaTime / 1000)
+      const movement = advanceBullet(bullet, target, deltaTime)
 
-      if (distance < 10 || moveDistance >= distance) {
+      if (movement.status === 'out_of_range') {
+        bullets.splice(i, 1)
+      } else if (movement.status === 'hit') {
         // 命中目标
         applyDamage(target, bullet)
         bullets.splice(i, 1)
       } else {
         // 继续移动
-        bullet.position.x += (dx / distance) * moveDistance
-        bullet.position.y += (dy / distance) * moveDistance
+        bullet.position = movement.position
       }
     }
   }, [applyDamage])
