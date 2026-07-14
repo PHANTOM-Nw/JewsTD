@@ -4,6 +4,7 @@ import {
   canInspectSynthesisFromTower,
   canSynthesizeTowers,
   canStartConfiguredWave,
+  getCompletedWaveForNotice,
   getStateAfterMineDamage,
   getStatusAfterPlacement,
   getStatusAfterWave
@@ -57,6 +58,17 @@ describe('build and wave flow', () => {
   it('moves directly to victory after the final configured wave', () => {
     expect(getStatusAfterWave(11, 12)).toBe('building')
     expect(getStatusAfterWave(12, 12)).toBe('victory')
+  })
+
+  it('shows a completed-wave notice until the next wave starts', () => {
+    expect(getCompletedWaveForNotice('building', 0, 12)).toBeNull()
+    expect(getCompletedWaveForNotice('building', 1, 12)).toBe(1)
+    expect(getCompletedWaveForNotice('deciding', 1, 12)).toBe(1)
+    expect(getCompletedWaveForNotice('ready', 1, 12)).toBe(1)
+    expect(getCompletedWaveForNotice('playing', 1, 12)).toBeNull()
+    expect(getCompletedWaveForNotice('paused', 1, 12)).toBeNull()
+    expect(getCompletedWaveForNotice('game_over', 1, 12)).toBeNull()
+    expect(getCompletedWaveForNotice('victory', 12, 12)).toBeNull()
   })
 
   it('applies each escaped enemy mine damage and enters game over at zero', () => {

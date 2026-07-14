@@ -64,7 +64,7 @@ export const StoragePanel: React.FC<StoragePanelProps> = ({
       overflowY: 'auto'
     }}>
       <h3 style={{ margin: '0 0 15px 0', textAlign: 'center', color: '#333' }}>
-        存储区 ({storedTowers.length})
+        场上塔 ({storedTowers.length})
       </h3>
       
       {storedTowers.length === 0 ? (
@@ -73,7 +73,7 @@ export const StoragePanel: React.FC<StoragePanelProps> = ({
           color: '#999',
           padding: '20px 0'
         }}>
-          暂无存储的塔
+          场上暂无保留塔
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

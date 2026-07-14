@@ -54,6 +54,26 @@ export function getStatusAfterWave(currentWave: number, totalWaves: number): Gam
   return currentWave >= totalWaves ? 'victory' : 'building'
 }
 
+export function getCompletedWaveForNotice(
+  gameStatus: GameStatus,
+  currentWave: number,
+  totalWaves: number
+): number | null {
+  const isPreparationPhase = gameStatus === 'building'
+    || gameStatus === 'deciding'
+    || gameStatus === 'ready'
+
+  if (
+    !isPreparationPhase
+    || currentWave <= 0
+    || currentWave >= totalWaves
+  ) {
+    return null
+  }
+
+  return currentWave
+}
+
 export function getStateAfterMineDamage(
   currentHealth: number,
   mineDamage: number,

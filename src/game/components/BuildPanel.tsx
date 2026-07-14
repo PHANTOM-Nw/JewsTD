@@ -71,48 +71,50 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
         )}
       </div>
       
-      <div style={{
-        marginTop: '15px',
-        padding: '10px',
-        background: wood > 0 ? '#E8F5E9' : '#FFEBEE',
-        borderRadius: '4px',
-        textAlign: 'center'
-      }}>
-        <div style={{ fontSize: '24px', fontWeight: 'bold', color: wood > 0 ? '#2E7D32' : '#C62828' }}>
-          {wood}
-        </div>
-        <div style={{ fontSize: '12px', color: '#666' }}>剩余木材</div>
-      </div>
-
-      <div style={{
-        marginTop: '10px',
-        padding: '10px',
-        background: gold >= ECONOMY_CONFIG.obstacleRemovalGoldCost ? '#FFF8E1' : '#F5F5F5',
-        borderRadius: '4px',
-        textAlign: 'center'
-      }}>
-        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#F57F17' }}>
-          {gold}
-        </div>
-        <div style={{ fontSize: '12px', color: '#666' }}>
-          清除障碍需 {ECONOMY_CONFIG.obstacleRemovalGoldCost} 金币
-        </div>
-      </div>
-      
-      {placedCount > 0 && (
+      <div className="build-panel__scoreboard" aria-label="建造资源记分板">
         <div style={{
-          marginTop: '10px',
+          marginTop: '15px',
           padding: '10px',
-          background: '#E3F2FD',
+          background: wood > 0 ? '#E8F5E9' : '#FFEBEE',
           borderRadius: '4px',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1976D2' }}>
-            {placedCount}/{ECONOMY_CONFIG.towersPerRound}
+          <div style={{ fontSize: '24px', fontWeight: 'bold', color: wood > 0 ? '#2E7D32' : '#C62828' }}>
+            {wood}
           </div>
-          <div style={{ fontSize: '12px', color: '#666' }}>已放置</div>
+          <div style={{ fontSize: '12px', color: '#666' }}>剩余木材</div>
         </div>
-      )}
+
+        <div style={{
+          marginTop: '10px',
+          padding: '10px',
+          background: gold >= ECONOMY_CONFIG.obstacleRemovalGoldCost ? '#FFF8E1' : '#F5F5F5',
+          borderRadius: '4px',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#F57F17' }}>
+            {gold}
+          </div>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            清除障碍需 {ECONOMY_CONFIG.obstacleRemovalGoldCost} 金币
+          </div>
+        </div>
+
+        {placedCount > 0 && (
+          <div style={{
+            marginTop: '10px',
+            padding: '10px',
+            background: '#E3F2FD',
+            borderRadius: '4px',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1976D2' }}>
+              {placedCount}/{ECONOMY_CONFIG.towersPerRound}
+            </div>
+            <div style={{ fontSize: '12px', color: '#666' }}>已放置</div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

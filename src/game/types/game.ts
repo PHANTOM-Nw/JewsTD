@@ -152,7 +152,7 @@ export interface GameState {
   towers: Tower[]
   bullets: Bullet[]
   grid: GridCell[][]     // 地图网格
-  storedTowers: Tower[]  // 存储的塔(跨波次保留)
+  storedTowers: Tower[]  // 场上跨波次保留塔的合成索引
   gameStatus: GameStatus
   selectedGem: GemType | null  // 当前选中的宝石类型
   currentPath: { row: number; col: number }[] | null  // 当前BFS路径

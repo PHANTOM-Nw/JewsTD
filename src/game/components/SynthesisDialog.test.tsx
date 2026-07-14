@@ -18,7 +18,7 @@ function createTower(id: string, gemType: GemType, col: number): Tower {
   }
 }
 
-const storedTowers = [
+const fieldTowers = [
   createTower('diamond-1', 'diamond', 1),
   createTower('diamond-2', 'diamond', 2),
   createTower('topaz-1', 'topaz', 3)
@@ -28,7 +28,8 @@ describe('SynthesisDialog', () => {
   it('shows available recipes without synthesis actions during combat', () => {
     const markup = renderToStaticMarkup(
       <SynthesisDialog
-        storedTowers={storedTowers}
+        fieldTowers={fieldTowers}
+        selectedTowerId="diamond-2"
         canSynthesize={false}
         onSynthesize={vi.fn(() => true)}
         onSynthesizeSpecial={vi.fn(() => true)}
@@ -39,6 +40,7 @@ describe('SynthesisDialog', () => {
     expect(markup).toContain('当前仅可查看合成列表')
     expect(markup).toContain('可合成的塔对 (1)')
     expect(markup).toContain('材料已集齐')
+    expect(markup).toContain('合成塔将保留在该塔位置')
     expect(markup).not.toContain('合成银塔')
     expect(markup).not.toContain('确认合成')
   })
@@ -46,7 +48,8 @@ describe('SynthesisDialog', () => {
   it('shows synthesis actions during preparation', () => {
     const markup = renderToStaticMarkup(
       <SynthesisDialog
-        storedTowers={storedTowers}
+        fieldTowers={fieldTowers}
+        selectedTowerId="diamond-2"
         canSynthesize
         onSynthesize={vi.fn(() => true)}
         onSynthesizeSpecial={vi.fn(() => true)}
@@ -56,5 +59,22 @@ describe('SynthesisDialog', () => {
 
     expect(markup).not.toContain('当前仅可查看合成列表')
     expect(markup).toContain('合成银塔')
+  })
+
+  it('describes retained towers as towers on the field', () => {
+    const markup = renderToStaticMarkup(
+      <SynthesisDialog
+        fieldTowers={[createTower('ruby-1', 'ruby', 1)]}
+        selectedTowerId="ruby-1"
+        canSynthesize
+        onSynthesize={vi.fn(() => true)}
+        onSynthesizeSpecial={vi.fn(() => true)}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('当前选中场上塔')
+    expect(markup).toContain('当前场上有 1 个可合成塔')
+    expect(markup).not.toContain('存储区')
   })
 })

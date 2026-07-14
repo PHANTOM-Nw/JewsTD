@@ -1,17 +1,20 @@
 import React, { useState } from 'react'
 import type { SpecialTowerType, Tower } from '../types/game'
 import {
-  canCraftSpecialTower,
-  findSynthesizableTowerPairs,
   GEM_COLORS,
   GEM_NAMES,
   LEVEL_NAMES,
   SPECIAL_TOWER_NAMES,
   SPECIAL_TOWER_RECIPES
 } from '../config/towers'
+import {
+  findSpecialSynthesisMaterials,
+  findSynthesisPairsAtTower
+} from '../engine/synthesis'
 
 interface SynthesisDialogProps {
-  storedTowers: Tower[]
+  fieldTowers: Tower[]
+  selectedTowerId: string
   canSynthesize: boolean
   onSynthesize: (towerId1: string, towerId2: string) => boolean
   onSynthesizeSpecial?: (specialType: SpecialTowerType) => boolean
@@ -31,7 +34,8 @@ const getNextLevelName = (level: 'chipped' | 'flawed' | 'normal') => {
 }
 
 export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
-  storedTowers,
+  fieldTowers,
+  selectedTowerId,
   canSynthesize,
   onSynthesize,
   onSynthesizeSpecial,
@@ -40,7 +44,8 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
   const [selectedTower1, setSelectedTower1] = useState<string | null>(null)
   const [selectedTower2, setSelectedTower2] = useState<string | null>(null)
 
-  const pairs = findSynthesizableTowerPairs(storedTowers)
+  const selectedFieldTower = fieldTowers.find(tower => tower.id === selectedTowerId)
+  const pairs = findSynthesisPairsAtTower(fieldTowers, selectedTowerId)
   const specialTowerTypes = Object.keys(SPECIAL_TOWER_RECIPES) as SpecialTowerType[]
   const specialTowers = specialTowerTypes.map(type => {
     const recipe = SPECIAL_TOWER_RECIPES[type]
@@ -50,7 +55,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
       type,
       name: SPECIAL_TOWER_NAMES[type],
       recipe: `${GEM_NAMES[firstGem]} + ${GEM_NAMES[secondGem]}`,
-      available: canCraftSpecialTower(storedTowers, type),
+      available: findSpecialSynthesisMaterials(fieldTowers, type, selectedTowerId) !== null,
       description: recipe.description
     }
   })
@@ -113,6 +118,26 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
             fontSize: '13px'
           }}>
             波次进行中：当前仅可查看合成列表，合成操作将在备战阶段开放。
+          </div>
+        )}
+
+        {selectedFieldTower && (
+          <div style={{
+            marginBottom: '20px',
+            padding: '10px 12px',
+            background: '#E3F2FD',
+            border: '1px solid #90CAF9',
+            borderRadius: '4px',
+            color: '#0D47A1',
+            fontSize: '13px'
+          }}>
+            当前选中场上塔：
+            {selectedFieldTower.specialType
+              ? SPECIAL_TOWER_NAMES[selectedFieldTower.specialType]
+              : selectedFieldTower.gemType
+                ? `${GEM_NAMES[selectedFieldTower.gemType]} ${LEVEL_NAMES[selectedFieldTower.level]}`
+                : '未知塔'}。
+            合成塔将保留在该塔位置。
           </div>
         )}
 
@@ -200,10 +225,10 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
               暂无可合成的塔对<br />
               <small>需要2个相同类型和等级的基础塔</small>
               <br /><br />
-              <strong>当前存储区有 {storedTowers.length} 个塔:</strong>
-              {storedTowers.length > 0 ? (
+              <strong>当前场上有 {fieldTowers.length} 个可合成塔:</strong>
+              {fieldTowers.length > 0 ? (
                 <ul style={{ textAlign: 'left', marginTop: '10px', paddingLeft: '20px' }}>
-                  {storedTowers.map(tower => (
+                  {fieldTowers.map(tower => (
                     <li key={tower.id} style={{ fontSize: '12px', marginBottom: '4px' }}>
                       {tower.specialType
                         ? SPECIAL_TOWER_NAMES[tower.specialType]
@@ -214,7 +239,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                   ))}
                 </ul>
               ) : (
-                <p style={{ fontSize: '12px', marginTop: '10px' }}>存储区为空,请先保留一些塔</p>
+                <p style={{ fontSize: '12px', marginTop: '10px' }}>场上暂无塔，请先保留一座塔</p>
               )}
             </div>
           ) : (
@@ -326,7 +351,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
               ✓ 确认合成
             </button>
             <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
-              合成后第一个塔将升级为高级塔,第二个塔将被消耗
+              合成塔将保留在当前选中塔的位置，另一座材料塔将被消耗
             </div>
           </div>
         )}

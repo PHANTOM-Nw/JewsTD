@@ -44,21 +44,21 @@ export const GameUI: React.FC<GameUIProps> = ({
     <div className="game-ui">
       {/* 资源显示 */}
       <div className="game-ui__resources">
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '12px', opacity: 0.9 }}>木材</div>
-          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{uiState.wood}</div>
+        <div className="game-ui__resource" style={{ textAlign: 'center' }}>
+          <div className="game-ui__label" style={{ fontSize: '12px', opacity: 0.9 }}>木材</div>
+          <div className="game-ui__value" style={{ fontSize: '24px', fontWeight: 'bold' }}>{uiState.wood}</div>
         </div>
         
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '12px', opacity: 0.9 }}>金币</div>
-          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{uiState.gold}</div>
+        <div className="game-ui__resource" style={{ textAlign: 'center' }}>
+          <div className="game-ui__label" style={{ fontSize: '12px', opacity: 0.9 }}>金币</div>
+          <div className="game-ui__value" style={{ fontSize: '24px', fontWeight: 'bold' }}>{uiState.gold}</div>
         </div>
       </div>
       
       {/* ✅ 新增: 游戏等级显示 */}
       <div className="game-ui__level">
-        <div style={{ fontSize: '12px', color: '#666' }}>游戏等级</div>
-        <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#9C27B0' }}>
+        <div className="game-ui__label" style={{ fontSize: '12px', color: '#666' }}>游戏等级</div>
+        <div className="game-ui__value" style={{ fontSize: '20px', fontWeight: 'bold', color: '#9C27B0' }}>
           Lv.{uiState.gameLevel}
         </div>
       </div>
@@ -66,6 +66,7 @@ export const GameUI: React.FC<GameUIProps> = ({
       {/* ✅ 新增: 升级按钮 */}
       {onUpgradeGameLevel && (
         <button
+          className="game-ui__upgrade"
           onClick={onUpgradeGameLevel}
           disabled={!isPreparationPhase || uiState.gold < calculateUpgradeCost(uiState.gameLevel)}
           style={{
@@ -91,8 +92,8 @@ export const GameUI: React.FC<GameUIProps> = ({
       
       {/* 矿坑生命 */}
       <div className="game-ui__stat">
-        <div style={{ fontSize: '12px', opacity: 0.9 }}>矿坑生命</div>
-        <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
+        <div className="game-ui__label" style={{ fontSize: '12px', opacity: 0.9 }}>矿坑生命</div>
+        <div className="game-ui__value" style={{ fontSize: '24px', fontWeight: 'bold' }}>
           {uiState.mineHealth}/{uiState.maxMineHealth}
         </div>
       </div>
@@ -102,8 +103,8 @@ export const GameUI: React.FC<GameUIProps> = ({
       
       {/* 波次 */}
       <div className="game-ui__stat">
-        <div style={{ fontSize: '12px', opacity: 0.9 }}>波次</div>
-        <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
+        <div className="game-ui__label" style={{ fontSize: '12px', opacity: 0.9 }}>波次</div>
+        <div className="game-ui__value" style={{ fontSize: '24px', fontWeight: 'bold' }}>
           {uiState.wave}/{WAVES.length}
         </div>
       </div>

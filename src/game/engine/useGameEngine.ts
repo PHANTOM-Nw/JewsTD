@@ -12,7 +12,7 @@ import type {
   EnemyType,
   UIState
 } from '../types/game'
-import { getTowerStats, SPECIAL_TOWER_RECIPES, GEM_COLORS, SPECIAL_TOWER_COLORS, LEVEL_ICONS, randomizeTowerLevel, calculateUpgradeCost, getTowerLevelProbabilities } from '../config/towers'
+import { getTowerStats, GEM_COLORS, SPECIAL_TOWER_COLORS, LEVEL_ICONS, randomizeTowerLevel, calculateUpgradeCost, getTowerLevelProbabilities } from '../config/towers'
 import { ENEMY_TYPES, createEnemy } from '../config/enemies'
 import { WAVES } from '../config/waves'
 import { MAP_CONFIG, initializeGrid, gridToPixel, WAYPOINTS } from '../config/map'
@@ -35,6 +35,11 @@ import {
   selectPierceTarget,
   selectTowerTargets
 } from './combat'
+import {
+  createSpecialTowerAtAnchor,
+  createUpgradedTowerAtAnchor,
+  findSpecialSynthesisMaterials
+} from './synthesis'
 
 interface EngineUiState extends UIState {
   selectedGem: GemType | null
@@ -272,7 +277,7 @@ export function useGameEngine() {
    * 批量决定5个塔的处理方式
    * 
    * 原版宝石TD核心玩法:
-   * - 选择1个塔保留到存储区
+   * - 选择1个塔保留在场上
    * - 其余4个塔变成障碍物(永久阻挡路径)
    * 
    * @param keepTowerId - 要保留的塔ID
@@ -303,10 +308,10 @@ export function useGameEngine() {
       }
       
       if (tower.id === keepTowerId) {
-        // ✅ 保留这个塔: 留在地图上,同时添加到存储区
+        // 保留塔继续留在场上，并加入跨波次合成索引
         console.log(`保留塔: ${tower.gemType} 在位置 (${tower.gridPosition.row}, ${tower.gridPosition.col})`)
 
-        // 创建副本添加到存储区(用于合成)
+        // 创建副本加入场上保留塔索引（用于合成）
         const towerCopy = { ...tower }
         storedTowers.push(towerCopy)
         
@@ -344,7 +349,7 @@ export function useGameEngine() {
       canPlaceTowers: false
     }))
     
-    console.log('最终塔数量:', towers.length, '存储区数量:', storedTowers.length)
+    console.log('最终塔数量:', towers.length, '场上保留塔数量:', storedTowers.length)
     return true
   }, [calculatePath, uiState.gameStatus])
   
@@ -357,41 +362,54 @@ export function useGameEngine() {
    * - 等级提升一级(chipped -> flawed -> normal -> flawless)
    * - 最高等级无法继续合成
    * 
-   * @param towerId1 - 第一个塔的ID
-   * @param towerId2 - 第二个塔的ID
+   * @param towerId1 - 第一个材料塔ID
+   * @param towerId2 - 第二个材料塔ID
+   * @param selectedTowerId - 玩家在场上选中的塔ID，也是合成塔的落点
    */
-  const synthesizeTowers = useCallback((towerId1: string, towerId2: string) => {
+  const synthesizeTowers = useCallback((
+    towerId1: string,
+    towerId2: string,
+    selectedTowerId: string
+  ) => {
     if (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') {
       return false
     }
 
-    if (towerId1 === towerId2) {
+    if (
+      towerId1 === towerId2
+      || (selectedTowerId !== towerId1 && selectedTowerId !== towerId2)
+    ) {
       return false
     }
 
     const { towers, storedTowers, grid } = gameStateRef.current
-    
-    // 从存储区找到两个塔
-    const tower1Index = storedTowers.findIndex(t => t.id === towerId1)
-    const tower2Index = storedTowers.findIndex(t => t.id === towerId2)
-    
-    if (tower1Index === -1 || tower2Index === -1) {
+
+    const selectedTower = storedTowers.find(tower => tower.id === selectedTowerId)
+    const consumedTowerId = selectedTowerId === towerId1 ? towerId2 : towerId1
+    const consumedTower = storedTowers.find(tower => tower.id === consumedTowerId)
+
+    if (
+      !selectedTower
+      || !consumedTower
+      || !towers.some(tower => tower.id === selectedTowerId)
+      || !towers.some(tower => tower.id === consumedTowerId)
+    ) {
       console.warn('找不到要合成的塔')
       return false
     }
-    
-    const tower1 = storedTowers[tower1Index]
-    const tower2 = storedTowers[tower2Index]
-    
+
     // 验证是否可以合成
-    if (tower1.gemType !== tower2.gemType || tower1.level !== tower2.level) {
+    if (
+      selectedTower.gemType !== consumedTower.gemType
+      || selectedTower.level !== consumedTower.level
+    ) {
       alert('只能合成相同类型和等级的塔!')
       return false
     }
     
     // 检查是否是最高等级
     const levels: GemLevel[] = ['chipped', 'flawed', 'normal', 'flawless']
-    const currentIndex = levels.indexOf(tower1.level)
+    const currentIndex = levels.indexOf(selectedTower.level)
     
     if (currentIndex >= levels.length - 1) {
       alert('已经是最高等级了!')
@@ -399,52 +417,28 @@ export function useGameEngine() {
     }
     
     const newLevel = levels[currentIndex + 1]
-    
-    // 创建升级后的塔(使用tower1的位置和属性)
-    const stats = getTowerStats(tower1.gemType!, newLevel)
-    const upgradedTower: Tower = {
-      ...tower1,
-      level: newLevel,
-      damage: stats.damage,
-      range: stats.range,
-      attackSpeed: stats.attackSpeed,
-      multiTarget: stats.multiTarget,
-      splashRadius: stats.splashRadius,
-      slowEffect: stats.slowEffect,
-      critChance: stats.critChance,
-      critMultiplier: stats.critMultiplier,
-      poisonDamage: stats.poisonDamage,
-      poisonDuration: stats.poisonDuration,
-      stunChance: stats.stunChance,
-      stunDuration: stats.stunDuration,
-      pierce: stats.pierce
+
+    const upgradedTower = createUpgradedTowerAtAnchor(selectedTower, newLevel)
+    if (!upgradedTower) {
+      return false
     }
-    
-    // 更新地图上的塔(如果存在)
-    const mapTowerIndex = towers.findIndex(t => t.id === tower1.id)
-    if (mapTowerIndex !== -1) {
-      towers[mapTowerIndex] = upgradedTower
-    }
-    
-    // ✅ 修改: 第二个塔变成障碍物,而不是消失
-    const tower2GridPos = tower2.gridPosition
-    
-    // 从towers数组移除
-    const tower2MapIndex = towers.findIndex(t => t.id === towerId2)
-    if (tower2MapIndex !== -1) {
-      towers.splice(tower2MapIndex, 1)
-    }
-    
-    // 将第二个塔的位置变为障碍物
-    grid[tower2GridPos.row][tower2GridPos.col] = {
+
+    const mapTowerIndex = towers.findIndex(tower => tower.id === selectedTowerId)
+    towers[mapTowerIndex] = upgradedTower
+
+    const consumedGridPosition = consumedTower.gridPosition
+    const consumedMapIndex = towers.findIndex(tower => tower.id === consumedTowerId)
+    towers.splice(consumedMapIndex, 1)
+
+    grid[consumedGridPosition.row][consumedGridPosition.col] = {
       type: 'obstacle',
-      row: tower2GridPos.row,
-      col: tower2GridPos.col
+      row: consumedGridPosition.row,
+      col: consumedGridPosition.col
     }
-    
-    console.log(`✅ 合成材料变为障碍物: (${tower2GridPos.row},${tower2GridPos.col})`)
-    
-    // 从存储区移除两个旧塔,添加升级后的塔
+
+    console.log(`✅ 合成材料变为障碍物: (${consumedGridPosition.row},${consumedGridPosition.col})`)
+
+    // 更新场上保留塔索引
     gameStateRef.current.storedTowers = storedTowers.filter(
       tower => tower.id !== towerId1 && tower.id !== towerId2
     )
@@ -454,7 +448,7 @@ export function useGameEngine() {
     const newPath = calculatePath(grid)
     gameStateRef.current.currentPath = newPath
     
-    console.log(`合成成功: ${tower1.gemType} ${tower1.level} x2 → ${upgradedTower.gemType} ${newLevel}`)
+    console.log(`合成成功: ${selectedTower.gemType} ${selectedTower.level} x2 → ${upgradedTower.gemType} ${newLevel}`)
     return true
   }, [calculatePath, uiState.gameStatus])
   
@@ -470,8 +464,12 @@ export function useGameEngine() {
    * - 玛瑙: 红宝石 + 黑曜石 = 纯粹伤害 + 暴击 + 眩晕
    * 
    * @param specialType - 特殊塔类型
+   * @param selectedTowerId - 玩家在场上选中的材料塔ID，也是合成塔的落点
    */
-  const synthesizeSpecialTower = useCallback((specialType: SpecialTowerType) => {
+  const synthesizeSpecialTower = useCallback((
+    specialType: SpecialTowerType,
+    selectedTowerId: string
+  ) => {
     if (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') {
       return false
     }
@@ -480,61 +478,27 @@ export function useGameEngine() {
     
     console.log(`开始合成特殊塔: ${specialType}`)
     
-    const recipe = SPECIAL_TOWER_RECIPES[specialType]
-    if (!recipe) {
-      console.error('未知的特殊塔类型:', specialType)
+    const selectedTowers = findSpecialSynthesisMaterials(
+      storedTowers,
+      specialType,
+      selectedTowerId
+    )
+    if (
+      !selectedTowers
+      || selectedTowers.some(material => !towers.some(tower => tower.id === material.id))
+    ) {
       return false
-    }
-    
-    // 找到需要的材料塔
-    const requiredTypes = recipe.requiredGems
-    const selectedTowers: Tower[] = []
-    
-    for (const gemType of requiredTypes) {
-      const tower = storedTowers.find(t => t.gemType === gemType && !selectedTowers.includes(t))
-      if (!tower) {
-        alert(`缺少${gemType}!`)
-        return false
-      }
-      selectedTowers.push(tower)
     }
     
     console.log('选中的材料塔:', selectedTowers.map(t => `${t.gemType} ${t.level}`))
     
-    // 创建新的特殊塔
+    // 所选场上塔固定为合成塔落点
     const firstTower = selectedTowers[0]
-    const newTower: Tower = {
-      ...firstTower,
-      id: firstTower.id,
-      gemType: undefined,  // 清除基础宝石类型
-      specialType: specialType,  // 设置特殊塔类型
-      level: recipe.level,
-      damage: recipe.stats.damage,
-      range: recipe.stats.range,
-      attackSpeed: recipe.stats.attackSpeed,
-      damageType: recipe.stats.damageType,
-      multiTarget: recipe.stats.multiTarget,
-      splashRadius: recipe.stats.splashRadius,
-      slowEffect: recipe.stats.slowEffect,
-      critChance: recipe.stats.critChance,
-      critMultiplier: recipe.stats.critMultiplier,
-      poisonDamage: recipe.stats.poisonDamage,
-      poisonDuration: recipe.stats.poisonDuration,
-      stunChance: recipe.stats.stunChance,
-      stunDuration: recipe.stats.stunDuration,
-      pierce: recipe.stats.pierce,
-      lastAttackTime: 0
-    }
-    
-    // 如果第一个材料塔在地图上,更新地图上的塔
+    const newTower = createSpecialTowerAtAnchor(firstTower, specialType)
+
     const mapTowerIndex = towers.findIndex(t => t.id === firstTower.id)
-    if (mapTowerIndex !== -1) {
-      towers[mapTowerIndex] = newTower
-      console.log('更新地图上的塔为新特殊塔')
-    } else {
-      // 如果不在地图上,添加到地图的空闲位置或存储区
-      console.log('材料塔不在地图上,新塔只添加到存储区')
-    }
+    towers[mapTowerIndex] = newTower
+    console.log('更新所选位置的塔为新特殊塔')
     
     // ✅ 修改: 其他材料塔变成障碍物
     for (let i = 1; i < selectedTowers.length; i++) {
@@ -557,16 +521,16 @@ export function useGameEngine() {
       console.log(`✅ 合成材料变为障碍物: (${materialGridPos.row},${materialGridPos.col})`)
     }
     
-    // 从存储区移除所有材料塔
+    // 从场上保留塔索引移除所有材料塔
     for (const tower of selectedTowers) {
       const index = storedTowers.findIndex(t => t.id === tower.id)
       if (index !== -1) {
         storedTowers.splice(index, 1)
-        console.log(`从存储区移除材料塔: ${tower.gemType} ${tower.level}`)
+        console.log(`从场上塔索引移除材料塔: ${tower.gemType} ${tower.level}`)
       }
     }
     
-    // 将新塔添加到存储区
+    // 将新塔添加回场上保留塔索引
     storedTowers.push(newTower)
     console.log(`合成成功! 新塔: ${specialType}, 伤害:${newTower.damage}, 范围:${newTower.range}`)
     

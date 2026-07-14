@@ -10,7 +10,7 @@ import {
 } from './towers'
 
 describe('special tower crafting', () => {
-  it('accepts the two required gems in any storage order', () => {
+  it('accepts the two required gems in any field order', () => {
     expect(canCraftSpecialTower([
       { gemType: 'topaz' },
       { gemType: 'diamond' }
