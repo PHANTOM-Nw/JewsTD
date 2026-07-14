@@ -167,7 +167,7 @@ export const StoragePanel: React.FC<StoragePanelProps> = ({
           border: '1px solid #4CAF50'
         }}>
           <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#2E7D32', marginBottom: '5px' }}>
-            ✨ 可合成特殊塔!
+            可合成特殊塔
           </div>
           {availableRecipes.map(recipe => (
             <div key={recipe.type} style={{ fontSize: '12px', color: '#666' }}>
@@ -219,7 +219,7 @@ export const StoragePanel: React.FC<StoragePanelProps> = ({
         fontSize: '12px',
         color: '#666'
       }}>
-        💡 点击两个相同类型和等级的塔进行合成升级
+        点击两个相同类型和等级的塔进行合成升级
       </div>
     </div>
   )

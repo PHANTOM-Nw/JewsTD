@@ -143,7 +143,7 @@ export interface WaveConfig {
 
 // 游戏状态
 export interface GameState {
-  wood: number           // 木材(每波固定5个)
+  wood: number           // 木材(每波数量由经济配置决定)
   gold: number           // 金币
   mineHealth: number     // 矿坑生命
   maxMineHealth: number  // 最大矿坑生命
@@ -156,7 +156,7 @@ export interface GameState {
   gameStatus: GameStatus
   selectedGem: GemType | null  // 当前选中的宝石类型
   currentPath: { row: number; col: number }[] | null  // 当前BFS路径
-  availableGems: GemType[]  // 当前波可用的5个随机宝石
+  availableGems: GemType[]  // 当前波配置数量的随机宝石
 }
 
 // UI状态接口

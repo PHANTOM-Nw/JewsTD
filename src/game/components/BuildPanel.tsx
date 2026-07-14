@@ -1,5 +1,11 @@
-import React from 'react'
+import {
+  ArrowCounterClockwiseIcon,
+  HammerIcon,
+  PauseIcon,
+  PlayIcon
+} from '@phosphor-icons/react'
 import { ECONOMY_CONFIG } from '../config/economy'
+import { WAVES } from '../config/waves'
 import type { GameStatus } from '../types/game'
 
 interface BuildPanelProps {
@@ -7,114 +13,120 @@ interface BuildPanelProps {
   gold: number
   placedCount: number
   gameStatus: GameStatus
+  currentWave?: number
+  onStartWave?: () => void
+  onPause?: () => void
+  onResume?: () => void
+  onReset?: () => void
 }
 
-export const BuildPanel: React.FC<BuildPanelProps> = ({
+function getPhaseCopy(gameStatus: GameStatus, placedCount: number) {
+  switch (gameStatus) {
+    case 'building':
+      return {
+        eyebrow: `建造 ${placedCount}/${ECONOMY_CONFIG.towersPerRound}`,
+        title: placedCount === 0 ? '点击空格建塔' : `再放 ${ECONOMY_CONFIG.towersPerRound - placedCount} 座塔`,
+        detail: `本轮随机生成 ${ECONOMY_CONFIG.towersPerRound} 座，最后保留 1 座。`
+      }
+    case 'deciding':
+      return {
+        eyebrow: '本轮建造完成',
+        title: '选择要保留的塔',
+        detail: `其余 ${ECONOMY_CONFIG.towersPerRound - 1} 座会变成障碍，继续改变敌人路线。`
+      }
+    case 'ready':
+      return {
+        eyebrow: '迷宫准备完成',
+        title: '开始下一波',
+        detail: `也可以点击障碍花费 ${ECONOMY_CONFIG.obstacleRemovalGoldCost} 金币清除。`
+      }
+    case 'playing':
+      return { eyebrow: '战斗中', title: '暂停', detail: '宝石塔正在自动攻击。' }
+    case 'paused':
+      return { eyebrow: '战斗已暂停', title: '继续', detail: '检查路线和塔位后继续战斗。' }
+    case 'victory':
+      return { eyebrow: '全部波次完成', title: '再玩一局', detail: '新的随机宝石会带来不同迷宫。' }
+    default:
+      return { eyebrow: '矿坑失守', title: '重新开始', detail: '调整塔位和清障时机再试一次。' }
+  }
+}
+
+export function BuildPanel({
   wood,
   gold,
   placedCount,
-  gameStatus
-}) => {
+  gameStatus,
+  currentWave = 0,
+  onStartWave,
+  onPause,
+  onResume,
+  onReset
+}: BuildPanelProps) {
+  const copy = getPhaseCopy(gameStatus, placedCount)
+  const disabledStart = currentWave >= WAVES.length
+
+  const renderPrimary = () => {
+    if (gameStatus === 'ready') {
+      return (
+        <button
+          type="button"
+          className="action-deck__primary"
+          onClick={onStartWave}
+          disabled={disabledStart || !onStartWave}
+        >
+          <PlayIcon weight="fill" />
+          开始第 {currentWave + 1} 波
+        </button>
+      )
+    }
+
+    if (gameStatus === 'playing') {
+      return (
+        <button type="button" className="action-deck__primary" onClick={onPause} disabled={!onPause}>
+          <PauseIcon weight="fill" />
+          暂停
+        </button>
+      )
+    }
+
+    if (gameStatus === 'paused') {
+      return (
+        <button type="button" className="action-deck__primary" onClick={onResume} disabled={!onResume}>
+          <PlayIcon weight="fill" />
+          继续
+        </button>
+      )
+    }
+
+    if (gameStatus === 'game_over' || gameStatus === 'victory') {
+      return (
+        <button type="button" className="action-deck__primary" onClick={onReset} disabled={!onReset}>
+          <ArrowCounterClockwiseIcon weight="bold" />
+          {copy.title}
+        </button>
+      )
+    }
+
+    return (
+      <div className="action-deck__primary action-deck__primary--status" aria-live="polite">
+        <HammerIcon weight="fill" />
+        {copy.title}
+      </div>
+    )
+  }
+
   return (
-    <div className="build-panel" style={{
-      padding: '15px',
-      background: '#F5F5F5',
-      borderRadius: '8px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-    }}>
-      <h3 style={{ margin: '0 0 15px 0', textAlign: 'center', color: '#333' }}>
-        建造提示
-      </h3>
-      
-      <div style={{
-        padding: '15px',
-        background: '#FFF9C4',
-        borderRadius: '4px',
-        fontSize: '14px',
-        color: '#666',
-        lineHeight: '1.6'
-      }}>
-        {gameStatus === 'playing' || gameStatus === 'paused' ? (
-          <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#FF5722' }}>
-            🎮 波次{gameStatus === 'paused' ? '已暂停' : '进行中'}，不能放置塔<br />
-            点击已有塔可查看合成列表
-          </p>
-        ) : gameStatus === 'deciding' ? (
-          <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#7B1FA2' }}>
-            请从本轮5座塔中选择1座保留
-          </p>
-        ) : gameStatus === 'ready' ? (
-          <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#2E7D32' }}>
-            本轮已完成，点击已有塔可合成，也可清障或开始波次
-          </p>
-        ) : gameStatus === 'game_over' || gameStatus === 'victory' ? (
-          <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#666' }}>
-            本局已结束
-          </p>
-        ) : (
-          <>
-            <p style={{ margin: '0 0 10px 0' }}>
-              💡 <strong>操作说明:</strong>
-            </p>
-            <ol style={{ margin: '0', paddingLeft: '20px' }}>
-              <li>点击地图空地放置塔</li>
-              <li>每次随机生成1个宝石</li>
-              <li>共放置5次(消耗5木材)</li>
-              <li>选择1个保留,其余变障碍</li>
-              <li>点击已有塔查看合成列表</li>
-              <li style={{ color: '#FF6B6B', fontWeight: 'bold' }}>
-                ✨ 点击障碍物消耗{ECONOMY_CONFIG.obstacleRemovalGoldCost}金币删除
-              </li>
-              <li style={{ color: '#FFA726', fontWeight: 'bold' }}>✨ 合成后材料变障碍物</li>
-            </ol>
-          </>
-        )}
+    <section className="build-panel action-deck" aria-label="当前游戏阶段">
+      <div className="action-deck__phase">
+        <span>{copy.eyebrow}</span>
+        <strong>{copy.detail}</strong>
       </div>
-      
-      <div className="build-panel__scoreboard" aria-label="建造资源记分板">
-        <div style={{
-          marginTop: '15px',
-          padding: '10px',
-          background: wood > 0 ? '#E8F5E9' : '#FFEBEE',
-          borderRadius: '4px',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '24px', fontWeight: 'bold', color: wood > 0 ? '#2E7D32' : '#C62828' }}>
-            {wood}
-          </div>
-          <div style={{ fontSize: '12px', color: '#666' }}>剩余木材</div>
-        </div>
-
-        <div style={{
-          marginTop: '10px',
-          padding: '10px',
-          background: gold >= ECONOMY_CONFIG.obstacleRemovalGoldCost ? '#FFF8E1' : '#F5F5F5',
-          borderRadius: '4px',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#F57F17' }}>
-            {gold}
-          </div>
-          <div style={{ fontSize: '12px', color: '#666' }}>
-            清除障碍需 {ECONOMY_CONFIG.obstacleRemovalGoldCost} 金币
-          </div>
-        </div>
-
-        {placedCount > 0 && (
-          <div style={{
-            marginTop: '10px',
-            padding: '10px',
-            background: '#E3F2FD',
-            borderRadius: '4px',
-            textAlign: 'center'
-          }}>
-            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1976D2' }}>
-              {placedCount}/{ECONOMY_CONFIG.towersPerRound}
-            </div>
-            <div style={{ fontSize: '12px', color: '#666' }}>已放置</div>
-          </div>
-        )}
+      {renderPrimary()}
+      <div className="action-deck__meta" aria-label="建造资源">
+        <span>木材 {wood}</span>
+        <span>金币 {gold}</span>
+        <span>清障 {ECONOMY_CONFIG.obstacleRemovalGoldCost}</span>
       </div>
-    </div>
+    </section>
   )
 }

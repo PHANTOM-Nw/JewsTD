@@ -1,12 +1,31 @@
 import type { GridCell } from '../types/game'
 
+/**
+ * 敌人按顺序经过的路线锚点。起点与终点坐标只在这里声明，
+ * MAP_CONFIG 从首尾锚点派生，避免两份坐标配置发生漂移。
+ */
+export const WAYPOINTS: ReadonlyArray<{
+  row: number
+  col: number
+  label?: string
+}> = [
+  { row: 0, col: 1, label: '起点' },
+  { row: 3, col: 1, label: '转折点1' },
+  { row: 3, col: 6, label: '转折点2' },
+  { row: 7, col: 6, label: '转折点3' },
+  { row: 9, col: 2, label: '终点' }
+] as const
+
+const startWaypoint = WAYPOINTS[0]!
+const endWaypoint = WAYPOINTS[WAYPOINTS.length - 1]!
+
 export const MAP_CONFIG = {
-  rows: 15,
-  cols: 20,
+  rows: 10,
+  cols: 8,
   cellSize: 40, // 每个格子的像素大小
-  startPos: { row: 0, col: 2 },      // 起点(顶部绿色区域)
-  endPos: { row: 14, col: 19 }        // 终点(右下角红色区域)
-}
+  startPos: { row: startWaypoint.row, col: startWaypoint.col },
+  endPos: { row: endWaypoint.row, col: endWaypoint.col }
+} as const
 
 /**
  * 宝石TD必经点机制
@@ -16,26 +35,11 @@ export const MAP_CONFIG = {
  * 2. 玩家通过放置塔/障碍物引导敌人走更长的路径
  * 3. BFS在相邻必经点之间独立计算最短路径
  * 
- * 必经点坐标配置(7个点):
- * - 0: 起点(绿色,顶部) (0,2)
- * - 1: 转折点1(蓝色,左侧) (7,2)
- * - 2: 转折点2(蓝色,右侧) (7,18)
- * - 3: 转折点3(蓝色,右上) (2,18)
- * - 4: 转折点4(蓝色,左侧中部) (2,10)
- * - 5: 转折点5(蓝色,右下) (12,10)
- * - 6: 终点(红色,右下) (14,19)
+ * 10×8 竖向地图使用5个点形成S形基础路线:
+ * 起点(0,1) → (3,1) → (3,6) → (7,6) → 终点(9,2)
  * 
  * 注意: 地图中央不设置特殊格,与其他空格一样可用于建造
  */
-export const WAYPOINTS: Array<{ row: number; col: number; label?: string }> = [
-  { row: 0, col: 2, label: '起点' },           // 0: 起点(顶部绿色区域)
-  { row: 7, col: 2, label: '转折点1' },        // 1: 向下到第7行(蓝色)
-  { row: 7, col: 18, label: '转折点2' },       // 2: 向右到第18列(蓝色)
-  { row: 2, col: 18, label: '转折点3' },       // 3: 向上到第2行(蓝色)
-  { row: 2, col: 10, label: '转折点4' },        // 4: 向左到左侧中部(蓝色)
-  { row: 12, col: 10, label: '转折点5' },      // 5: 向下到右下(蓝色)
-  { row: 14, col: 19, label: '终点' }          // 6: 终点(右下角红色区域)
-]
 
 // 初始化空地图(无预定义障碍物)
 export function initializeGrid(): GridCell[][] {

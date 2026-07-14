@@ -43,7 +43,7 @@ export function usePathfinding() {
    * 检查是否可以在指定位置放置塔
    * 
    * 这是一个"只读"检查,不会修改grid
-   * 内部会临时标记该位置为塔,然后执行BFS验证
+   * 内部会在网格副本标记该位置为塔,然后执行BFS验证
    * 
    * 适用场景:
    * - 鼠标悬停时预览是否可以放置
@@ -61,12 +61,12 @@ export function usePathfinding() {
   }, [startPos, endPos])
   
   /**
-   * 验证放置操作(会临时修改grid)
+   * 验证放置操作(不会修改grid)
    * 
    * 与checkPlacement功能相同,但语义上更强调"验证"动作
    * 在实际放置塔之前调用此函数进行最终确认
    * 
-   * 注意:此函数会临时修改grid,但会在返回前恢复原状
+   * 注意:此函数在网格副本上完成验证
    * 
    * @param grid - 当前地图网格
    * @param position - 要验证的位置 {row, col}

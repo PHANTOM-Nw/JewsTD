@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { ECONOMY_CONFIG } from '../config/economy'
+import { WAVES } from '../config/waves'
 import {
   canFinalizeTowerBatch,
   canInspectSynthesisFromTower,
@@ -12,30 +14,39 @@ import {
 
 describe('build and wave flow', () => {
   it('enters the decision phase only after the full tower batch is placed', () => {
-    expect(getStatusAfterPlacement(4, 5)).toEqual({
+    expect(getStatusAfterPlacement(
+      ECONOMY_CONFIG.towersPerRound - 1,
+      ECONOMY_CONFIG.towersPerRound
+    )).toEqual({
       gameStatus: 'building',
       canPlaceTowers: true
     })
-    expect(getStatusAfterPlacement(5, 5)).toEqual({
+    expect(getStatusAfterPlacement(
+      ECONOMY_CONFIG.towersPerRound,
+      ECONOMY_CONFIG.towersPerRound
+    )).toEqual({
       gameStatus: 'deciding',
       canPlaceTowers: false
     })
   })
 
   it('requires exactly one valid keep choice from a complete batch', () => {
-    const batch = ['a', 'b', 'c', 'd', 'e']
+    const batch = Array.from(
+      { length: ECONOMY_CONFIG.towersPerRound },
+      (_, index) => `tower-${index}`
+    )
 
-    expect(canFinalizeTowerBatch(batch, 'c', 5)).toBe(true)
-    expect(canFinalizeTowerBatch(batch.slice(0, 4), 'c', 5)).toBe(false)
-    expect(canFinalizeTowerBatch(batch, 'missing', 5)).toBe(false)
+    expect(canFinalizeTowerBatch(batch, batch[1], ECONOMY_CONFIG.towersPerRound)).toBe(true)
+    expect(canFinalizeTowerBatch(batch.slice(0, -1), batch[1], ECONOMY_CONFIG.towersPerRound)).toBe(false)
+    expect(canFinalizeTowerBatch(batch, 'missing', ECONOMY_CONFIG.towersPerRound)).toBe(false)
   })
 
   it('starts a wave only from the ready phase with a valid path', () => {
-    expect(canStartConfiguredWave('ready', 0, 12, true)).toBe(true)
-    expect(canStartConfiguredWave('building', 0, 12, true)).toBe(false)
-    expect(canStartConfiguredWave('deciding', 0, 12, true)).toBe(false)
-    expect(canStartConfiguredWave('ready', 0, 12, false)).toBe(false)
-    expect(canStartConfiguredWave('ready', 12, 12, true)).toBe(false)
+    expect(canStartConfiguredWave('ready', 0, WAVES.length, true)).toBe(true)
+    expect(canStartConfiguredWave('building', 0, WAVES.length, true)).toBe(false)
+    expect(canStartConfiguredWave('deciding', 0, WAVES.length, true)).toBe(false)
+    expect(canStartConfiguredWave('ready', 0, WAVES.length, false)).toBe(false)
+    expect(canStartConfiguredWave('ready', WAVES.length, WAVES.length, true)).toBe(false)
   })
 
   it('allows existing towers to open the synthesis list during preparation and combat', () => {
@@ -56,8 +67,8 @@ describe('build and wave flow', () => {
   })
 
   it('moves directly to victory after the final configured wave', () => {
-    expect(getStatusAfterWave(11, 12)).toBe('building')
-    expect(getStatusAfterWave(12, 12)).toBe('victory')
+    expect(getStatusAfterWave(WAVES.length - 1, WAVES.length)).toBe('building')
+    expect(getStatusAfterWave(WAVES.length, WAVES.length)).toBe('victory')
   })
 
   it('shows a completed-wave notice until the next wave starts', () => {

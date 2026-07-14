@@ -7,7 +7,7 @@ type TimedEffectTarget = Pick<
   'speed' | 'slowTimer' | 'slowEffect' | 'isStunned' | 'stunTimer'
 >
 
-export const PIERCE_SEARCH_RADIUS = 80
+export const PIERCE_SEARCH_RADIUS = 60
 export const PIERCE_DAMAGE_MULTIPLIER = 0.6
 
 export interface DamageResult {

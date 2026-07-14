@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Enemy, Tower } from '../types/game'
 import {
   PIERCE_DAMAGE_MULTIPLIER,
+  PIERCE_SEARCH_RADIUS,
   advanceBullet,
   advancePoisonEffects,
   advanceTimedEffects,
@@ -91,7 +92,7 @@ describe('tower targeting', () => {
     const dead = createEnemy('dead', 5, 0.5, 10)
     const nearest = createEnemy('nearest', 2, 0.5, 20)
     const farther = createEnemy('farther', 4, 0.5, 50)
-    const outOfRange = createEnemy('out-of-range', 9, 0.5, 81)
+    const outOfRange = createEnemy('out-of-range', 9, 0.5, PIERCE_SEARCH_RADIUS + 1)
     escaped.reachedEnd = true
     dead.isDead = true
 
@@ -103,6 +104,7 @@ describe('tower targeting', () => {
       outOfRange,
       nearest
     ])).toBe(nearest)
+    expect(PIERCE_SEARCH_RADIUS).toBe(60)
     expect(calculateDamage(
       100 * PIERCE_DAMAGE_MULTIPLIER,
       'pure',

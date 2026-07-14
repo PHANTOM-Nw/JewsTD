@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MAP_CONFIG, initializeGrid } from './map'
+import { findPath, getPathLength } from '../pathfinding/pathfinding'
 import { createEnemy, ENEMY_TYPES } from './enemies'
 
 describe('enemy configuration', () => {
@@ -13,6 +15,23 @@ describe('enemy configuration', () => {
       expect(config.magicResist).toBeGreaterThanOrEqual(0)
       expect(config.magicResist).toBeLessThan(1)
     }
+  })
+
+  it('uses the tuned mobile-board speeds and 18-step empty-route travel times', () => {
+    const path = findPath(initializeGrid(), MAP_CONFIG.startPos, MAP_CONFIG.endPos)
+    const pathDistance = getPathLength(path ?? []) * MAP_CONFIG.cellSize
+
+    expect(getPathLength(path ?? [])).toBe(18)
+    expect({
+      basic: ENEMY_TYPES.basic.speed,
+      fast: ENEMY_TYPES.fast.speed,
+      tank: ENEMY_TYPES.tank.speed,
+      boss: ENEMY_TYPES.boss.speed
+    }).toEqual({ basic: 50, fast: 85, tank: 34, boss: 27 })
+    expect(pathDistance / ENEMY_TYPES.basic.speed).toBeCloseTo(14.4)
+    expect(pathDistance / ENEMY_TYPES.fast.speed).toBeCloseTo(8.47, 2)
+    expect(pathDistance / ENEMY_TYPES.tank.speed).toBeCloseTo(21.18, 2)
+    expect(pathDistance / ENEMY_TYPES.boss.speed).toBeCloseTo(26.67, 2)
   })
 })
 

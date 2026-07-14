@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { ECONOMY_CONFIG } from '../config/economy'
 import { BuildPanel } from './BuildPanel'
 import { GameUI } from './GameUI'
 
@@ -11,11 +12,11 @@ vi.mock('../services/audio', () => ({
 }))
 
 describe('mobile game layout', () => {
-  it('provides six compact top-scoreboard cells', () => {
+  it('renders the five resource cards from the selected mobile concept', () => {
     const markup = renderToStaticMarkup(
       <GameUI
         uiState={{
-          wood: 5,
+          wood: 3,
           gold: 50,
           mineHealth: 15,
           maxMineHealth: 15,
@@ -25,32 +26,36 @@ describe('mobile game layout', () => {
           canPlaceTowers: true,
           gameLevel: 1
         }}
-        onStartWave={vi.fn()}
-        onPause={vi.fn()}
-        onResume={vi.fn()}
         onUpgradeGameLevel={vi.fn()}
         onResetGame={vi.fn()}
       />
     )
 
-    expect(markup.match(/class="game-ui__resource"/g)).toHaveLength(2)
-    expect(markup.match(/class="game-ui__stat"/g)).toHaveLength(2)
-    expect(markup).toContain('class="game-ui__level"')
-    expect(markup).toContain('class="game-ui__upgrade"')
+    expect(markup.match(/class="game-ui__resource /g)).toHaveLength(5)
+    expect(markup).toContain('木材')
+    expect(markup).toContain('矿坑生命')
+    expect(markup).toContain('波次')
+    expect(markup).toContain('Lv.1')
+    expect(markup).not.toContain('🎮')
   })
 
-  it('groups the secondary resource scoreboard so mobile CSS can remove it', () => {
+  it('derives the three-build action deck from the economy config', () => {
     const markup = renderToStaticMarkup(
-      <BuildPanel wood={3} gold={20} placedCount={2} gameStatus="building" />
+      <BuildPanel
+        wood={1}
+        gold={20}
+        placedCount={2}
+        gameStatus="building"
+        currentWave={0}
+      />
     )
     const gameStyles = readFileSync(new URL('./TowerDefenseGame.css', import.meta.url), 'utf8')
-    const mobileRules = gameStyles.slice(
-      gameStyles.indexOf('@media (max-width: 760px)'),
-      gameStyles.indexOf('@media (max-width: 380px)')
-    )
 
-    expect(markup).toContain('class="build-panel__scoreboard"')
-    expect(markup).toContain('剩余木材')
-    expect(mobileRules).toMatch(/\.build-panel__scoreboard\s*{\s*display:\s*none;/)
+    expect(ECONOMY_CONFIG.towersPerRound).toBe(3)
+    expect(markup).toContain('建造 2/3')
+    expect(markup).toContain('再放 1 座塔')
+    expect(markup).toContain(`清障 ${ECONOMY_CONFIG.obstacleRemovalGoldCost}`)
+    expect(gameStyles).toMatch(/width:\s*min\(100%,\s*430px\)/)
+    expect(gameStyles).toMatch(/aspect-ratio:\s*4\s*\/\s*5/)
   })
 })

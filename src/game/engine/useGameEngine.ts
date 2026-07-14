@@ -12,10 +12,10 @@ import type {
   EnemyType,
   UIState
 } from '../types/game'
-import { getTowerStats, GEM_COLORS, SPECIAL_TOWER_COLORS, LEVEL_ICONS, randomizeTowerLevel, calculateUpgradeCost, getTowerLevelProbabilities } from '../config/towers'
-import { ENEMY_TYPES, createEnemy } from '../config/enemies'
+import { getTowerStats, randomizeTowerLevel, calculateUpgradeCost, getTowerLevelProbabilities } from '../config/towers'
+import { createEnemy } from '../config/enemies'
 import { WAVES } from '../config/waves'
-import { MAP_CONFIG, initializeGrid, gridToPixel, WAYPOINTS } from '../config/map'
+import { initializeGrid, gridToPixel } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
 import { soundManager, type SoundType } from '../services/audio'
 import {
@@ -40,6 +40,12 @@ import {
   createUpgradedTowerAtAnchor,
   findSpecialSynthesisMaterials
 } from './synthesis'
+import {
+  evaluateBatchPlacement,
+  recycleOldestObstacles,
+  type GridPosition
+} from './building'
+import { renderGameScene } from '../rendering/canvasRenderer'
 
 interface EngineUiState extends UIState {
   selectedGem: GemType | null
@@ -59,6 +65,7 @@ interface EngineState {
   gameTime: number
   currentBatchTowerIds: string[]
   currentHealthMultiplier: number
+  obstacleOrder: GridPosition[]
 }
 
 function createInitialUiState(): EngineUiState {
@@ -104,7 +111,7 @@ function createInitialUiState(): EngineUiState {
  */
 export function useGameEngine() {
   // 寻路相关功能
-  const { calculatePath, validatePlacement } = usePathfinding()
+  const { calculatePath } = usePathfinding()
   
   // ==================== UI状态(触发重渲染) ====================
   const [uiState, setUiState] = useState<EngineUiState>(createInitialUiState)
@@ -125,9 +132,25 @@ export function useGameEngine() {
       waveElapsedTime: 0,
       gameTime: 0,
       currentBatchTowerIds: [],
-      currentHealthMultiplier: 1
+      currentHealthMultiplier: 1,
+      obstacleOrder: []
     }
   }
+
+  const ageObstacles = useCallback((requiredSafeBuildCells: number) => {
+    const state = gameStateRef.current
+    const result = recycleOldestObstacles(
+      state.grid,
+      state.obstacleOrder,
+      ECONOMY_CONFIG.maxObstacles,
+      requiredSafeBuildCells
+    )
+
+    state.grid = result.grid
+    state.obstacleOrder = result.obstacleOrder
+    state.currentPath = result.path
+    return result.hasCapacity
+  }, [])
   
   // ==================== 核心方法 ====================
   
@@ -145,7 +168,7 @@ export function useGameEngine() {
    * 原版宝石TD玩法:
    * 1. 点击地图格子,随机生成1个宝石塔
    * 2. 每次消耗1木材
-   * 3. 共放置5次后进入决策阶段
+   * 3. 达到本轮配置的建造数量后进入决策阶段
    * 
    * @param gridPos - 格子坐标 {row, col}
    * @returns 新创建的塔,如果放置失败则返回undefined
@@ -176,9 +199,21 @@ export function useGameEngine() {
       return null
     }
     
-    // 验证是否会堵死路径
-    if (!validatePlacement(grid, gridPos)) {
-      alert('不能堵死路径!')
+    const remainingPlacements = (
+      ECONOMY_CONFIG.towersPerRound
+      - gameStateRef.current.currentBatchTowerIds.length
+      - 1
+    )
+    const placementResult = evaluateBatchPlacement(
+      grid,
+      gridPos,
+      remainingPlacements
+    )
+
+    if (!placementResult.canPlace) {
+      alert(placementResult.failure === 'insufficient_capacity'
+        ? '这里会让本轮剩余宝石没有足够的安全位置!'
+        : '不能堵死路径!')
       return null
     }
     
@@ -239,13 +274,12 @@ export function useGameEngine() {
     }
     
     // 重新计算路径
-    const newPath = calculatePath(grid)
-    gameStateRef.current.currentPath = newPath
+    gameStateRef.current.currentPath = placementResult.path
     
     return newTower
-  }, [uiState.canPlaceTowers, uiState.gameStatus, uiState.wood, validatePlacement, calculatePath, uiState.gameLevel])
+  }, [uiState.canPlaceTowers, uiState.gameStatus, uiState.wood, uiState.gameLevel])
 
-  /** 删除一个障碍物并消耗金币，不占用本轮的5次建造。 */
+  /** 删除一个障碍物并消耗金币，不占用本轮配置的建造次数。 */
   const removeObstacle = useCallback((gridPos: { row: number; col: number }) => {
     if (
       (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') ||
@@ -265,6 +299,9 @@ export function useGameEngine() {
       type: 'empty',
       towerId: undefined
     }
+    gameStateRef.current.obstacleOrder = gameStateRef.current.obstacleOrder.filter(
+      position => position.row !== gridPos.row || position.col !== gridPos.col
+    )
     gameStateRef.current.currentPath = calculatePath(grid)
     setUiState(prev => ({
       ...prev,
@@ -274,11 +311,11 @@ export function useGameEngine() {
   }, [calculatePath, uiState.gameStatus, uiState.gold])
   
   /**
-   * 批量决定5个塔的处理方式
+   * 批量决定本轮塔的处理方式
    * 
    * 原版宝石TD核心玩法:
    * - 选择1个塔保留在场上
-   * - 其余4个塔变成障碍物(永久阻挡路径)
+   * - 其余塔变成障碍物，并进入受上限保护的累计队列
    * 
    * @param keepTowerId - 要保留的塔ID
    */
@@ -330,18 +367,17 @@ export function useGameEngine() {
         const { gridPosition } = tower
         grid[gridPosition.row][gridPosition.col] = {
           ...grid[gridPosition.row][gridPosition.col],
-          type: 'obstacle',  // 变成永久障碍物
+          type: 'obstacle',  // 进入累计障碍队列，超限时最老障碍会风化
           towerId: undefined
         }
+        gameStateRef.current.obstacleOrder.push({ ...gridPosition })
       }
     })
     
     // 清空当前批次列表
     gameStateRef.current.currentBatchTowerIds = []
     
-    // 重新计算路径(因为障碍物变化了)
-    const newPath = calculatePath(grid)
-    gameStateRef.current.currentPath = newPath
+    ageObstacles(0)
 
     setUiState(prev => ({
       ...prev,
@@ -351,7 +387,7 @@ export function useGameEngine() {
     
     console.log('最终塔数量:', towers.length, '场上保留塔数量:', storedTowers.length)
     return true
-  }, [calculatePath, uiState.gameStatus])
+  }, [ageObstacles, uiState.gameStatus])
   
   /**
    * 合成两个相同类型和等级的塔
@@ -435,6 +471,7 @@ export function useGameEngine() {
       row: consumedGridPosition.row,
       col: consumedGridPosition.col
     }
+    gameStateRef.current.obstacleOrder.push({ ...consumedGridPosition })
 
     console.log(`✅ 合成材料变为障碍物: (${consumedGridPosition.row},${consumedGridPosition.col})`)
 
@@ -444,13 +481,11 @@ export function useGameEngine() {
     )
     gameStateRef.current.storedTowers.push(upgradedTower)
     
-    // 重新计算路径(因为障碍物变化了)
-    const newPath = calculatePath(grid)
-    gameStateRef.current.currentPath = newPath
+    ageObstacles(0)
     
     console.log(`合成成功: ${selectedTower.gemType} ${selectedTower.level} x2 → ${upgradedTower.gemType} ${newLevel}`)
     return true
-  }, [calculatePath, uiState.gameStatus])
+  }, [ageObstacles, uiState.gameStatus])
   
   /**
    * 合成特殊塔
@@ -517,6 +552,7 @@ export function useGameEngine() {
         row: materialGridPos.row,
         col: materialGridPos.col
       }
+      gameStateRef.current.obstacleOrder.push({ ...materialGridPos })
       
       console.log(`✅ 合成材料变为障碍物: (${materialGridPos.row},${materialGridPos.col})`)
     }
@@ -534,9 +570,7 @@ export function useGameEngine() {
     storedTowers.push(newTower)
     console.log(`合成成功! 新塔: ${specialType}, 伤害:${newTower.damage}, 范围:${newTower.range}`)
     
-    // 重新计算路径(因为可能改变了地图上的塔)
-    const newPath = calculatePath(grid)
-    gameStateRef.current.currentPath = newPath
+    ageObstacles(0)
     
     const specialNameMap: Record<SpecialTowerType, string> = {
       silver: '银塔',
@@ -548,7 +582,7 @@ export function useGameEngine() {
     }
     alert(`成功合成${specialNameMap[specialType]}!`)
     return true
-  }, [calculatePath, uiState.gameStatus])
+  }, [ageObstacles, uiState.gameStatus])
   
   /**
    * ✅ 新增: 升级游戏等级
@@ -1019,6 +1053,11 @@ export function useGameEngine() {
         // 波次完成
         gameStateRef.current.waveInProgress = false
         gameStateRef.current.bullets = []
+
+        const nextStatus = getStatusAfterWave(uiState.wave, WAVES.length)
+        if (nextStatus === 'building') {
+          ageObstacles(ECONOMY_CONFIG.towersPerRound)
+        }
         
         setUiState(prev => {
           if (prev.gameStatus === 'game_over') return prev
@@ -1036,314 +1075,18 @@ export function useGameEngine() {
         console.log(`第${uiState.wave}波完成!`)
       }
     }
-  }, [uiState.gameStatus, uiState.wave, spawnEnemies, updateEnemies, processTowerAttacks, updateBullets])
+  }, [uiState.gameStatus, uiState.wave, spawnEnemies, updateEnemies, processTowerAttacks, updateBullets, ageObstacles])
   
   // ==================== Render函数 ====================
-  
-  /**
-   * 渲染函数 - 绘制整个游戏画面
-   * 
-   * 绘制顺序:
-   * 1. 清空画布
-   * 2. 绘制网格(地形)
-   * 3. 绘制敌人
-   * 4. 绘制塔
-   * 5. 绘制子弹
-   */
+
   const render = useCallback(() => {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement
     if (!canvas) return
-    
+
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    
-    const { grid, enemies, towers, bullets } = gameStateRef.current
-    
-    // 清空画布(考虑设备像素比)
-    const dpr = window.devicePixelRatio || 1
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
-    
-    // 绘制网格
-    drawGrid(ctx, grid)
-
-    if (gameStateRef.current.currentPath) {
-      drawPath(ctx, gameStateRef.current.currentPath)
-    }
-    
-    // 绘制必经点(在所有元素之前)
-    drawWaypoints(ctx)
-    
-    // 绘制敌人 - 确保这里被调用
-    enemies.forEach(enemy => {
-      if (!enemy.reachedEnd) {
-        drawEnemy(ctx, enemy)
-      }
-    })
-    
-    // 绘制塔 - 确保这里绘制了所有塔
-    towers.forEach(tower => drawTower(ctx, tower))
-    
-    // 绘制子弹
-    bullets.forEach(bullet => drawBullet(ctx, bullet))
+    renderGameScene(ctx, gameStateRef.current)
   }, [])
-  
-  /**
-   * 绘制网格(地形)
-   * @param ctx - Canvas上下文
-   * @param grid - 地图网格
-   */
-  const drawGrid = (ctx: CanvasRenderingContext2D, grid: GridCell[][]) => {
-    const { cellSize } = MAP_CONFIG
-    
-    grid.forEach(row => {
-      row.forEach(cell => {
-        const x = cell.col * cellSize
-        const y = cell.row * cellSize
-        
-        // 根据类型绘制不同颜色
-        switch (cell.type) {
-          case 'empty':
-            ctx.fillStyle = '#F0F0F0'
-            break
-          case 'obstacle':
-            ctx.fillStyle = '#8B4513'
-            break
-          case 'start':
-            ctx.fillStyle = '#90EE90'
-            break
-          case 'end':
-            ctx.fillStyle = '#FF6B6B'
-            break
-          case 'mine':
-            ctx.fillStyle = '#FFD700'
-            break
-          default:
-            ctx.fillStyle = '#FFFFFF'
-        }
-        
-        ctx.fillRect(x, y, cellSize, cellSize)
-        ctx.strokeStyle = '#CCCCCC'
-        ctx.strokeRect(x, y, cellSize, cellSize)
-      })
-    })
-  }
-
-  const drawPath = (
-    ctx: CanvasRenderingContext2D,
-    path: { row: number; col: number }[]
-  ) => {
-    const { cellSize } = MAP_CONFIG
-    ctx.save()
-    ctx.strokeStyle = 'rgba(244, 67, 54, 0.35)'
-    ctx.lineWidth = 3
-    ctx.setLineDash([6, 6])
-    ctx.beginPath()
-    path.forEach((point, index) => {
-      const x = point.col * cellSize + cellSize / 2
-      const y = point.row * cellSize + cellSize / 2
-      if (index === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    })
-    ctx.stroke()
-    ctx.restore()
-  }
-  
-  /**
-   * 绘制必经点标记
-   * @param ctx - Canvas上下文
-   */
-  const drawWaypoints = (ctx: CanvasRenderingContext2D) => {
-    const { cellSize } = MAP_CONFIG
-    
-    // 为每个必经点绘制不同颜色的标记
-    WAYPOINTS.forEach((waypoint, index) => {
-      const x = waypoint.col * cellSize + cellSize / 2
-      const y = waypoint.row * cellSize + cellSize / 2
-      
-      // 根据类型选择颜色
-      let color: string
-      let radius: number
-      
-      if (index === 0) {
-        // 起点 - 绿色大圆
-        color = '#90EE90'
-        radius = 12
-      } else if (index === WAYPOINTS.length - 1) {
-        // 终点 - 红色大圆
-        color = '#FF6B6B'
-        radius = 12
-      } else if (waypoint.label === '矿坑') {
-        // 矿坑 - 黄色中圆
-        color = '#FFD700'
-        radius = 10
-      } else {
-        // 转折点 - 蓝色小圆
-        color = '#4169E1'
-        radius = 8
-      }
-      
-      // 绘制圆形标记
-      ctx.fillStyle = color
-      ctx.globalAlpha = 0.7  // 半透明
-      ctx.beginPath()
-      ctx.arc(x, y, radius, 0, Math.PI * 2)
-      ctx.fill()
-      
-      // 绘制边框
-      ctx.strokeStyle = '#FFFFFF'
-      ctx.lineWidth = 2
-      ctx.globalAlpha = 1.0
-      ctx.stroke()
-      
-      // 绘制标签文字(索引数字)
-      ctx.fillStyle = '#000000'
-      ctx.font = 'bold 10px Arial'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(`${index}`, x, y)
-      
-      // 如果有label,在下方显示
-      if (waypoint.label) {
-        ctx.fillStyle = '#333333'
-        ctx.font = '9px Arial'
-        ctx.fillText(waypoint.label, x, y + radius + 10)
-      }
-    })
-    
-  }
-  
-  /**
-   * 绘制敌人
-   * @param ctx - Canvas上下文
-   * @param enemy - 敌人对象
-   */
-  const drawEnemy = (ctx: CanvasRenderingContext2D, enemy: Enemy) => {
-    const config = ENEMY_TYPES[enemy.type]
-    
-    // 绘制敌人身体
-    ctx.fillStyle = config.color
-    ctx.beginPath()
-    ctx.arc(enemy.position.x, enemy.position.y, config.radius, 0, Math.PI * 2)
-    ctx.fill()
-    
-    // 绘制边框
-    ctx.strokeStyle = '#000000'
-    ctx.lineWidth = 2
-    ctx.stroke()
-    
-    // 绘制血条背景
-    const barWidth = 24
-    const barHeight = 4
-    ctx.fillStyle = '#FF0000'
-    ctx.fillRect(
-      enemy.position.x - barWidth / 2,
-      enemy.position.y - config.radius - 8,
-      barWidth,
-      barHeight
-    )
-    
-    // 绘制血条前景
-    const healthPercent = Math.max(0, Math.min(enemy.health / enemy.maxHealth, 1))
-    ctx.fillStyle = '#00FF00'
-    ctx.fillRect(
-      enemy.position.x - barWidth / 2,
-      enemy.position.y - config.radius - 8,
-      barWidth * healthPercent,
-      barHeight
-    )
-    
-    // 绘制中毒效果
-    if (enemy.poisonEffects && enemy.poisonEffects.length > 0) {
-      ctx.strokeStyle = '#00FF00'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.arc(enemy.position.x, enemy.position.y, config.radius + 3, 0, Math.PI * 2)
-      ctx.stroke()
-    }
-    
-    // 绘制眩晕效果
-    if (enemy.isStunned) {
-      ctx.fillStyle = '#FFFF00'
-      ctx.font = '12px Arial'
-      ctx.textAlign = 'center'
-      ctx.fillText('💫', enemy.position.x, enemy.position.y - config.radius - 15)
-    }
-  }
-  
-  /**
-   * 绘制塔
-   * @param ctx - Canvas上下文
-   * @param tower - 塔对象
-   */
-  const drawTower = (ctx: CanvasRenderingContext2D, tower: Tower) => {
-    // 确定颜色
-    let color: string
-    if (tower.specialType) {
-      color = SPECIAL_TOWER_COLORS[tower.specialType]
-    } else if (tower.gemType) {
-      color = GEM_COLORS[tower.gemType]
-    } else {
-      color = '#CCCCCC'
-    }
-    
-    // 绘制塔底座
-    ctx.fillStyle = color
-    ctx.fillRect(
-      tower.position.x - 18,
-      tower.position.y - 18,
-      36,
-      36
-    )
-    
-    // 绘制边框
-    ctx.strokeStyle = '#333'
-    ctx.lineWidth = 2
-    ctx.strokeRect(
-      tower.position.x - 18,
-      tower.position.y - 18,
-      36,
-      36
-    )
-    
-    // 绘制等级标识
-    const levelIcon = LEVEL_ICONS[tower.level]
-    ctx.fillStyle = tower.gemType === 'diamond' || tower.specialType === 'moonstone' ? '#333' : 'white'
-    ctx.font = 'bold 14px Arial'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(levelIcon, tower.position.x, tower.position.y)
-    
-    // 绘制特效标识
-    if (tower.multiTarget) {
-      ctx.fillStyle = '#FFD700'
-      ctx.font = '10px Arial'
-      ctx.fillText(`×${tower.multiTarget}`, tower.position.x, tower.position.y + 12)
-    }
-    
-    // 绘制溅射范围(仅当选中时)
-    // 这里可以后续添加交互逻辑
-  }
-  
-  /**
-   * 绘制子弹
-   * @param ctx - Canvas上下文
-   * @param bullet - 子弹对象
-   */
-  const drawBullet = (ctx: CanvasRenderingContext2D, bullet: Bullet) => {
-    // 绘制子弹主体
-    ctx.fillStyle = '#FF4500'
-    ctx.beginPath()
-    ctx.arc(bullet.position.x, bullet.position.y, 4, 0, Math.PI * 2)
-    ctx.fill()
-    
-    // 添加拖尾效果
-    ctx.strokeStyle = 'rgba(255, 69, 0, 0.5)'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(bullet.position.x, bullet.position.y)
-    ctx.lineTo(bullet.position.x - 8, bullet.position.y)
-    ctx.stroke()
-  }
   
   // ==================== 整合游戏循环 ====================
   
@@ -1382,7 +1125,8 @@ export function useGameEngine() {
       waveElapsedTime: 0,
       gameTime: 0,
       currentBatchTowerIds: [],
-      currentHealthMultiplier: 1
+      currentHealthMultiplier: 1,
+      obstacleOrder: []
     }
     setUiState(createInitialUiState())
   }, [calculatePath])
