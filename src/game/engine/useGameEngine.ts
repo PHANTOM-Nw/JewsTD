@@ -10,6 +10,9 @@ import type {
   GemLevel,
   SpecialTowerType,
   EnemyType,
+  DamageNumber,
+  DamageNumberType,
+  PlacementPreview,
   UIState
 } from '../types/game'
 import { getTowerStats, randomizeTowerLevel, calculateUpgradeCost, getTowerLevelProbabilities } from '../config/towers'
@@ -41,11 +44,14 @@ import {
   findSpecialSynthesisMaterials
 } from './synthesis'
 import {
+  createBatchPlacementPreview,
   evaluateBatchPlacement,
+  getRemainingBatchPlacements,
   recycleOldestObstacles,
   type GridPosition
 } from './building'
 import { renderGameScene } from '../rendering/canvasRenderer'
+import { advanceDamageNumbers, createDamageNumber } from './damageNumbers'
 
 interface EngineUiState extends UIState {
   selectedGem: GemType | null
@@ -56,9 +62,12 @@ interface EngineState {
   enemies: Enemy[]
   towers: Tower[]
   bullets: Bullet[]
+  damageNumbers: DamageNumber[]
+  damageNumberSequence: number
   grid: GridCell[][]
   storedTowers: Tower[]
   currentPath: { row: number; col: number }[] | null
+  placementPreview: PlacementPreview | null
   waveInProgress: boolean
   spawnQueue: Array<{ type: EnemyType; delay: number }>
   waveElapsedTime: number
@@ -87,7 +96,7 @@ function createInitialUiState(): EngineUiState {
  * 游戏引擎核心Hook
  * 
  * 整合所有游戏系统,包括:
- * - 资源管理(木材、金币、矿坑生命)
+ * - 资源管理(建造次数、金币、矿坑生命)
  * - 塔的放置、合成、升级
  * - 敌人生成和移动
  * - 战斗系统(攻击、伤害计算、子弹追踪)
@@ -115,6 +124,7 @@ export function useGameEngine() {
   
   // ==================== UI状态(触发重渲染) ====================
   const [uiState, setUiState] = useState<EngineUiState>(createInitialUiState)
+  const [hasActiveDamageNumbers, setHasActiveDamageNumbers] = useState(false)
   
   // ==================== 游戏对象状态(不触发重渲染,高频更新) ====================
   const gameStateRef = useRef<EngineState>(null!)
@@ -124,9 +134,12 @@ export function useGameEngine() {
       enemies: [],
       towers: [],
       bullets: [],
+      damageNumbers: [],
+      damageNumberSequence: 0,
       grid,
       storedTowers: [],
       currentPath: calculatePath(grid),
+      placementPreview: null,
       waveInProgress: false,
       spawnQueue: [],
       waveElapsedTime: 0,
@@ -149,6 +162,7 @@ export function useGameEngine() {
     state.grid = result.grid
     state.obstacleOrder = result.obstacleOrder
     state.currentPath = result.path
+    state.placementPreview = null
     return result.hasCapacity
   }, [])
   
@@ -161,26 +175,57 @@ export function useGameEngine() {
   const selectGem = useCallback((gemType: GemType) => {
     setUiState(prev => ({ ...prev, selectedGem: gemType }))
   }, [])
+
+  const clearPlacementPreview = useCallback(() => {
+    gameStateRef.current.placementPreview = null
+  }, [])
+
+  const previewTowerPlacement = useCallback((gridPos: GridPosition) => {
+    const state = gameStateRef.current
+    if (
+      uiState.gameStatus !== 'building'
+      || !uiState.canPlaceTowers
+      || uiState.wood < ECONOMY_CONFIG.towerWoodCost
+      || state.currentBatchTowerIds.length >= ECONOMY_CONFIG.towersPerRound
+    ) {
+      state.placementPreview = null
+      return null
+    }
+
+    const remainingPlacements = getRemainingBatchPlacements(
+      ECONOMY_CONFIG.towersPerRound,
+      state.currentBatchTowerIds.length
+    )
+    const preview = createBatchPlacementPreview(
+      state.grid,
+      gridPos,
+      remainingPlacements
+    )
+    state.placementPreview = preview
+    return preview
+  }, [uiState.canPlaceTowers, uiState.gameStatus, uiState.wood])
   
   /**
    * 放置塔到指定位置(随机生成宝石)
    * 
    * 原版宝石TD玩法:
    * 1. 点击地图格子,随机生成1个宝石塔
-   * 2. 每次消耗1木材
+   * 2. 每次占用1次本轮建造
    * 3. 达到本轮配置的建造数量后进入决策阶段
    * 
    * @param gridPos - 格子坐标 {row, col}
    * @returns 新创建的塔,如果放置失败则返回undefined
    */
   const placeTower = useCallback((gridPos: { row: number; col: number }) => {
+    gameStateRef.current.placementPreview = null
+
     if (uiState.gameStatus !== 'building' || !uiState.canPlaceTowers) {
       console.warn('当前不能放置塔')
       return null
     }
     
     if (uiState.wood < ECONOMY_CONFIG.towerWoodCost) {
-      alert('木材已用完!')
+      alert('本轮建造次数已用完!')
       return null
     }
 
@@ -199,10 +244,9 @@ export function useGameEngine() {
       return null
     }
     
-    const remainingPlacements = (
-      ECONOMY_CONFIG.towersPerRound
-      - gameStateRef.current.currentBatchTowerIds.length
-      - 1
+    const remainingPlacements = getRemainingBatchPlacements(
+      ECONOMY_CONFIG.towersPerRound,
+      gameStateRef.current.currentBatchTowerIds.length
     )
     const placementResult = evaluateBatchPlacement(
       grid,
@@ -672,11 +716,12 @@ export function useGameEngine() {
     gameStateRef.current.spawnQueue = spawnQueue
     gameStateRef.current.waveElapsedTime = 0
     gameStateRef.current.waveInProgress = true
+    gameStateRef.current.placementPreview = null
     
     // 锁定放置阶段,波次中不能放置塔
     setUiState(prev => ({
       ...prev,
-      wood: 0,  // 波次中木材为0
+      wood: 0,  // 波次中剩余建造次数为0
       wave: prev.wave + 1,
       gameStatus: 'playing',
       canPlaceTowers: false,
@@ -687,6 +732,37 @@ export function useGameEngine() {
   }, [uiState.gameStatus, uiState.wave])
   
   // ==================== Update函数 ====================
+
+  const queueDamageNumber = useCallback((
+    enemy: Enemy,
+    amount: number,
+    damageType: DamageNumberType,
+    critical = false
+  ) => {
+    if (
+      enemy.isDead ||
+      enemy.reachedEnd ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      return false
+    }
+
+    const state = gameStateRef.current
+    const sequence = state.damageNumberSequence
+    const wasEmpty = state.damageNumbers.length === 0
+    state.damageNumberSequence += 1
+    state.damageNumbers.push(createDamageNumber({
+      sequence,
+      position: enemy.position,
+      amount,
+      damageType,
+      critical
+    }))
+
+    if (wasEmpty) setHasActiveDamageNumbers(true)
+    return true
+  }, [])
   
   /**
    * 更新敌人位置和状态
@@ -714,11 +790,11 @@ export function useGameEngine() {
         const poisonUpdate = advancePoisonEffects(enemy.poisonEffects, deltaTime)
         enemy.poisonEffects = poisonUpdate.effects
 
-        if (
-          poisonUpdate.damage > 0 &&
-          applyEnemyDamage(enemy, poisonUpdate.damage)
-        ) {
-          setUiState(prev => ({ ...prev, gold: prev.gold + enemy.reward }))
+        if (poisonUpdate.damage > 0) {
+          queueDamageNumber(enemy, poisonUpdate.damage, 'poison')
+          if (applyEnemyDamage(enemy, poisonUpdate.damage)) {
+            setUiState(prev => ({ ...prev, gold: prev.gold + enemy.reward }))
+          }
         }
       }
 
@@ -776,7 +852,7 @@ export function useGameEngine() {
     
     // 清理到达终点或死亡的敌人
     gameStateRef.current.enemies = enemies.filter(e => !e.reachedEnd && !e.isDead)
-  }, [])
+  }, [queueDamageNumber])
   
   /**
    * 根据生成队列生成敌人
@@ -892,7 +968,14 @@ export function useGameEngine() {
    * @param bullet - 子弹
    */
   const applyDamage = useCallback((enemy: Enemy, bullet: Bullet) => {
-    const damageTarget = (target: Enemy, damage: number) => {
+    const damageTarget = (
+      target: Enemy,
+      damage: number,
+      damageType: DamageNumberType,
+      critical = false
+    ) => {
+      if (!queueDamageNumber(target, damage, damageType, critical)) return
+
       if (applyEnemyDamage(target, damage)) {
         setUiState(prev => ({ ...prev, gold: prev.gold + target.reward }))
       }
@@ -905,7 +988,12 @@ export function useGameEngine() {
       bullet.critChance,
       bullet.critMultiplier
     )
-    damageTarget(enemy, damageResult.damage)
+    damageTarget(
+      enemy,
+      damageResult.damage,
+      bullet.damageType,
+      damageResult.critical
+    )
 
     const damageSecondaryTarget = (target: Enemy, multiplier: number) => {
       const result = calculateDamage(
@@ -916,7 +1004,7 @@ export function useGameEngine() {
         1,
         1
       )
-      damageTarget(target, result.damage)
+      damageTarget(target, result.damage, bullet.damageType, result.critical)
     }
     
     // ========== 溅射效果 ==========
@@ -980,7 +1068,7 @@ export function useGameEngine() {
         e => e.id !== enemy.id
       )
     }
-  }, [])
+  }, [queueDamageNumber])
   
   /**
    * 更新子弹位置和碰撞检测
@@ -1036,6 +1124,13 @@ export function useGameEngine() {
    * @param deltaTime - 距离上一帧的时间间隔(ms)
    */
   const update = useCallback((deltaTime: number) => {
+    const state = gameStateRef.current
+    const hadActiveDamageNumbers = state.damageNumbers.length > 0
+    state.damageNumbers = advanceDamageNumbers(state.damageNumbers, deltaTime)
+    if (hadActiveDamageNumbers && state.damageNumbers.length === 0) {
+      setHasActiveDamageNumbers(false)
+    }
+
     if (uiState.gameStatus !== 'playing') return
     
     gameStateRef.current.gameTime += deltaTime
@@ -1093,10 +1188,13 @@ export function useGameEngine() {
   useGameLoop(
     update,
     render,
-    uiState.gameStatus === 'building' ||
-      uiState.gameStatus === 'deciding' ||
-      uiState.gameStatus === 'ready' ||
-      uiState.gameStatus === 'playing'
+    uiState.gameStatus !== 'paused' && (
+      uiState.gameStatus === 'building' ||
+        uiState.gameStatus === 'deciding' ||
+        uiState.gameStatus === 'ready' ||
+        uiState.gameStatus === 'playing' ||
+        hasActiveDamageNumbers
+    )
   )
 
   const pause = useCallback(() => {
@@ -1117,9 +1215,12 @@ export function useGameEngine() {
       enemies: [],
       towers: [],
       bullets: [],
+      damageNumbers: [],
+      damageNumberSequence: 0,
       grid,
       storedTowers: [],
       currentPath: calculatePath(grid),
+      placementPreview: null,
       waveInProgress: false,
       spawnQueue: [],
       waveElapsedTime: 0,
@@ -1128,6 +1229,7 @@ export function useGameEngine() {
       currentHealthMultiplier: 1,
       obstacleOrder: []
     }
+    setHasActiveDamageNumbers(false)
     setUiState(createInitialUiState())
   }, [calculatePath])
   
@@ -1135,6 +1237,8 @@ export function useGameEngine() {
     uiState,
     gameStateRef,
     selectGem,
+    previewTowerPlacement,
+    clearPlacementPreview,
     placeTower,
     removeObstacle,
     finalizeTowers,

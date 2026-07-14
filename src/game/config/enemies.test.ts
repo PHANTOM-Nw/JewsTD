@@ -17,21 +17,21 @@ describe('enemy configuration', () => {
     }
   })
 
-  it('uses the tuned mobile-board speeds and 18-step empty-route travel times', () => {
+  it('uses the tuned mobile-board speeds and 16-step empty-route travel times', () => {
     const path = findPath(initializeGrid(), MAP_CONFIG.startPos, MAP_CONFIG.endPos)
     const pathDistance = getPathLength(path ?? []) * MAP_CONFIG.cellSize
 
-    expect(getPathLength(path ?? [])).toBe(18)
+    expect(getPathLength(path ?? [])).toBe(16)
     expect({
       basic: ENEMY_TYPES.basic.speed,
       fast: ENEMY_TYPES.fast.speed,
       tank: ENEMY_TYPES.tank.speed,
       boss: ENEMY_TYPES.boss.speed
     }).toEqual({ basic: 50, fast: 85, tank: 34, boss: 27 })
-    expect(pathDistance / ENEMY_TYPES.basic.speed).toBeCloseTo(14.4)
-    expect(pathDistance / ENEMY_TYPES.fast.speed).toBeCloseTo(8.47, 2)
-    expect(pathDistance / ENEMY_TYPES.tank.speed).toBeCloseTo(21.18, 2)
-    expect(pathDistance / ENEMY_TYPES.boss.speed).toBeCloseTo(26.67, 2)
+    expect(pathDistance / ENEMY_TYPES.basic.speed).toBeCloseTo(12.8)
+    expect(pathDistance / ENEMY_TYPES.fast.speed).toBeCloseTo(7.53, 2)
+    expect(pathDistance / ENEMY_TYPES.tank.speed).toBeCloseTo(18.82, 2)
+    expect(pathDistance / ENEMY_TYPES.boss.speed).toBeCloseTo(23.7, 2)
   })
 })
 

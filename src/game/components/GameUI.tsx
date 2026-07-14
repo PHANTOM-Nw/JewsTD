@@ -4,11 +4,11 @@ import {
   ArrowCounterClockwiseIcon,
   ArrowFatUpIcon,
   CoinsIcon,
+  HammerIcon,
   HeartIcon,
   ShieldIcon,
   SpeakerHighIcon,
   SpeakerSlashIcon,
-  TreeIcon,
   WavesIcon
 } from '@phosphor-icons/react'
 import { calculateUpgradeCost } from '../config/towers'
@@ -74,9 +74,9 @@ export function GameUI({
       <div className="game-ui__resources">
         <ResourceCard
           className="game-ui__resource--wood"
-          label="木材"
+          label="剩余建造"
           value={uiState.wood}
-          icon={<TreeIcon weight="duotone" />}
+          icon={<HammerIcon weight="duotone" />}
         />
         <ResourceCard
           className="game-ui__resource--gold"
@@ -140,7 +140,7 @@ export function GameUI({
       </div>
 
       <p className="sr-only" aria-live="polite">
-        木材{uiState.wood}，金币{uiState.gold}，矿坑生命{uiState.mineHealth}，
+        剩余建造{uiState.wood}次，金币{uiState.gold}，矿坑生命{uiState.mineHealth}，
         第{uiState.wave}波，游戏等级{uiState.gameLevel}。
       </p>
     </header>

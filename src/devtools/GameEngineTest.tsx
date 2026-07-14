@@ -34,7 +34,7 @@ export const GameEngineTest: React.FC = () => {
       {/* UI状态显示 */}
       <div style={{ marginBottom: '20px', padding: '10px', background: '#f0f0f0' }}>
         <h3>游戏状态</h3>
-        <p>木材: {uiState.wood}</p>
+        <p>剩余建造: {uiState.wood} 次</p>
         <p>金币: {uiState.gold}</p>
         <p>矿坑生命: {uiState.mineHealth} / {uiState.maxMineHealth}</p>
         <p>波次: {uiState.wave}</p>

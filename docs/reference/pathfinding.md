@@ -13,6 +13,8 @@
 
 - `findPath(grid, start, end)`：计算经过全部必经点的完整路径。
 - `canPlaceTower(grid, position, start, end)`：只读验证候选位置是否会堵死路线。
+- `evaluateBatchPlacement(grid, position, remainingPlacements)`：在网格副本中同时验证路线和本轮剩余建造容量。
+- `createBatchPlacementPreview(grid, position, remainingPlacements)`：复用真实放置评估，返回 Canvas 使用的候选路线与可放置状态。
 - `getPathLength(path)`：计算路径步数。
 - `getMoveDirection(from, to)`：返回相邻路径点之间的移动方向。
 - `usePathfinding()`：为 React 游戏引擎绑定当前地图起点和终点。

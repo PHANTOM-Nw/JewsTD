@@ -9,7 +9,7 @@ describe('economy configuration', () => {
     expect(ECONOMY_CONFIG.startingMineHealth).toBe(15)
   })
 
-  it('funds exactly three one-wood tower placements each round', () => {
+  it('provides exactly three one-cost tower placements each round', () => {
     expect(ECONOMY_CONFIG.woodPerRound).toBe(3)
     expect(ECONOMY_CONFIG.towersPerRound).toBe(3)
     expect(ECONOMY_CONFIG.towerWoodCost).toBe(1)

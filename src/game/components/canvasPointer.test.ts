@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { gridToPixel, MAP_CONFIG } from '../config/map'
-import { screenPointToGrid } from './canvasPointer'
+import {
+  beginPlacementPointer,
+  consumePlacementClick,
+  createPlacementPointerState,
+  finishPlacementPointer,
+  isPrimaryPlacementPointer,
+  selectPlacementPreviewCell,
+  screenPointToGrid
+} from './canvasPointer'
 
 const logicalWidth = MAP_CONFIG.cols * MAP_CONFIG.cellSize
 const logicalHeight = MAP_CONFIG.rows * MAP_CONFIG.cellSize
@@ -44,5 +52,87 @@ describe('screenPointToGrid', () => {
       logicalWidth,
       logicalHeight
     )).toBeNull()
+  })
+
+  it.each([
+    [-1, 20],
+    [20, -1],
+    [logicalWidth, 20],
+    [20, logicalHeight]
+  ])('ignores points outside the logical canvas at (%s, %s)', (x, y) => {
+    expect(screenPointToGrid(
+      x,
+      y,
+      { left: 0, top: 0, width: logicalWidth, height: logicalHeight },
+      logicalWidth,
+      logicalHeight
+    )).toBeNull()
+  })
+
+  it('includes the top-left edge and excludes the bottom-right edge', () => {
+    const rect = { left: 10, top: 20, width: 160, height: 200 }
+
+    expect(screenPointToGrid(
+      rect.left,
+      rect.top,
+      rect,
+      logicalWidth,
+      logicalHeight
+    )).toEqual({ row: 0, col: 0 })
+    expect(screenPointToGrid(
+      rect.left + rect.width,
+      rect.top + rect.height,
+      rect,
+      logicalWidth,
+      logicalHeight
+    )).toBeNull()
+  })
+})
+
+describe('isPrimaryPlacementPointer', () => {
+  it('accepts only the primary pointer with its main button', () => {
+    expect(isPrimaryPlacementPointer(true, 0)).toBe(true)
+    expect(isPrimaryPlacementPointer(false, 0)).toBe(false)
+    expect(isPrimaryPlacementPointer(true, 1)).toBe(false)
+    expect(isPrimaryPlacementPointer(true, 2)).toBe(false)
+  })
+})
+
+describe('placement preview pointer state', () => {
+  it('updates only when the active pointer crosses into another cell', () => {
+    let state = beginPlacementPointer(7)
+    const first = selectPlacementPreviewCell(state, 7, { row: 1, col: 2 })
+    state = first.state
+    const repeated = selectPlacementPreviewCell(state, 7, { row: 1, col: 2 })
+    const moved = selectPlacementPreviewCell(state, 7, { row: 1, col: 3 })
+    const unrelated = selectPlacementPreviewCell(state, 8, { row: 2, col: 3 })
+
+    expect(first.changed).toBe(true)
+    expect(repeated.changed).toBe(false)
+    expect(moved.changed).toBe(true)
+    expect(unrelated.changed).toBe(false)
+  })
+
+  it('allows a click after pointer up but suppresses one after cancellation', () => {
+    const active = beginPlacementPointer(7)
+    const completed = finishPlacementPointer(active, 7, false)
+    const canceled = finishPlacementPointer(active, null, true)
+    const completedClick = consumePlacementClick(completed.state)
+    const canceledClick = consumePlacementClick(canceled.state)
+
+    expect(completed.ended).toBe(true)
+    expect(completedClick.shouldCommit).toBe(true)
+    expect(canceled.ended).toBe(true)
+    expect(canceledClick.shouldCommit).toBe(false)
+    expect(consumePlacementClick(canceledClick.state).shouldCommit).toBe(true)
+  })
+
+  it('ignores finish signals for an unrelated or idle pointer', () => {
+    const active = beginPlacementPointer(7)
+    const unrelated = finishPlacementPointer(active, 8, true)
+    const idle = finishPlacementPointer(createPlacementPointerState(), null, true)
+
+    expect(unrelated).toEqual({ state: active, ended: false })
+    expect(idle.ended).toBe(false)
   })
 })

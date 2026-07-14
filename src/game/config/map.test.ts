@@ -24,6 +24,8 @@ describe('map configuration', () => {
     expect(MAP_CONFIG.rows).toBe(10)
     expect(MAP_CONFIG.cols).toBe(8)
     expect(MAP_CONFIG.cellSize).toBe(40)
+    expect(MAP_CONFIG.startPos).toEqual({ row: 0, col: 0 })
+    expect(MAP_CONFIG.endPos).toEqual({ row: 9, col: 7 })
     expect(grid).toHaveLength(MAP_CONFIG.rows)
     expect(grid.every(row => row.length === MAP_CONFIG.cols)).toBe(true)
     expect(grid[MAP_CONFIG.startPos.row][MAP_CONFIG.startPos.col].type).toBe('start')

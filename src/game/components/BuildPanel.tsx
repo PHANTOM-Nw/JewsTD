@@ -25,8 +25,8 @@ function getPhaseCopy(gameStatus: GameStatus, placedCount: number) {
     case 'building':
       return {
         eyebrow: `建造 ${placedCount}/${ECONOMY_CONFIG.towersPerRound}`,
-        title: placedCount === 0 ? '点击空格建塔' : `再放 ${ECONOMY_CONFIG.towersPerRound - placedCount} 座塔`,
-        detail: `本轮随机生成 ${ECONOMY_CONFIG.towersPerRound} 座，最后保留 1 座。`
+        title: placedCount === 0 ? '按住空格预览' : `再放 ${ECONOMY_CONFIG.towersPerRound - placedCount} 座塔`,
+        detail: `松开后建塔，本轮随机生成 ${ECONOMY_CONFIG.towersPerRound} 座并保留 1 座。`
       }
     case 'deciding':
       return {
@@ -123,7 +123,7 @@ export function BuildPanel({
       </div>
       {renderPrimary()}
       <div className="action-deck__meta" aria-label="建造资源">
-        <span>木材 {wood}</span>
+        <span>剩余建造 {wood} 次</span>
         <span>金币 {gold}</span>
         <span>清障 {ECONOMY_CONFIG.obstacleRemovalGoldCost}</span>
       </div>

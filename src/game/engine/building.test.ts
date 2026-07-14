@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ECONOMY_CONFIG } from '../config/economy'
-import { initializeGrid, MAP_CONFIG } from '../config/map'
+import { initializeGrid, MAP_CONFIG, WAYPOINTS } from '../config/map'
 import { findPath } from '../pathfinding/pathfinding'
 import type { GridCell } from '../types/game'
 import {
+  createBatchPlacementPreview,
   evaluateBatchPlacement,
+  getRemainingBatchPlacements,
   listSafeBuildCells,
   recycleOldestObstacles,
   type GridPosition
@@ -50,12 +52,21 @@ describe('building capacity rules', () => {
     vi.restoreAllMocks()
   })
 
+  it('derives the remaining batch capacity after the candidate placement', () => {
+    expect(getRemainingBatchPlacements(3, 0)).toBe(2)
+    expect(getRemainingBatchPlacements(3, 1)).toBe(1)
+    expect(getRemainingBatchPlacements(3, 2)).toBe(0)
+    expect(getRemainingBatchPlacements(3, 8)).toBe(0)
+  })
+
   it('evaluates a batch placement without modifying the input grid', () => {
     const grid = initializeGrid()
+    const path = findPath(grid, MAP_CONFIG.startPos, MAP_CONFIG.endPos)
+    const position = listSafeBuildCells(grid, path)[0]
     const originalGrid = structuredClone(grid)
     const result = evaluateBatchPlacement(
       grid,
-      { row: 0, col: 0 },
+      position,
       ECONOMY_CONFIG.towersPerRound - 1
     )
 
@@ -81,6 +92,55 @@ describe('building capacity rules', () => {
     expect(result.path).not.toBeNull()
     expect(result.canPlace).toBe(false)
     expect(result.failure).toBe('insufficient_capacity')
+  })
+
+  it('previews a rerouted path without modifying the real grid', () => {
+    const grid = initializeGrid()
+    const currentPath = findPath(grid, MAP_CONFIG.startPos, MAP_CONFIG.endPos)!
+    const candidate = currentPath.find(position => (
+      grid[position.row][position.col].type === 'empty'
+      && !WAYPOINTS.some(waypoint => (
+        waypoint.row === position.row && waypoint.col === position.col
+      ))
+    ))!
+    const originalGrid = structuredClone(grid)
+
+    const preview = createBatchPlacementPreview(grid, candidate, 0)
+
+    expect(preview?.status).toBe('valid')
+    expect(preview?.path).not.toEqual(currentPath)
+    expect(grid).toEqual(originalGrid)
+  })
+
+  it('reports blocked and non-buildable placement previews distinctly', () => {
+    const grid = initializeGrid()
+    const blockedPreview = createBatchPlacementPreview(grid, WAYPOINTS[1], 0)
+
+    grid[0][1].type = 'tower'
+    const occupiedPreview = createBatchPlacementPreview(grid, { row: 0, col: 1 }, 0)
+
+    expect(blockedPreview).toMatchObject({
+      position: WAYPOINTS[1],
+      path: null,
+      status: 'path_blocked'
+    })
+    expect(occupiedPreview).toBeNull()
+  })
+
+  it('keeps the candidate path while flagging insufficient batch capacity', () => {
+    const grid = initializeGrid()
+    const path = findPath(grid, MAP_CONFIG.startPos, MAP_CONFIG.endPos)!
+    const safeCells = listSafeBuildCells(grid, path)
+    const candidate = safeCells[0]
+
+    for (const position of safeCells.slice(1)) {
+      grid[position.row][position.col].type = 'obstacle'
+    }
+
+    const preview = createBatchPlacementPreview(grid, candidate, 1)
+
+    expect(preview?.status).toBe('insufficient_capacity')
+    expect(preview?.path).not.toBeNull()
   })
 
   it('recycles oldest obstacles without modifying its inputs', () => {

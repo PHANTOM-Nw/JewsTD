@@ -32,7 +32,7 @@ describe('mobile game layout', () => {
     )
 
     expect(markup.match(/class="game-ui__resource /g)).toHaveLength(5)
-    expect(markup).toContain('木材')
+    expect(markup).toContain('剩余建造')
     expect(markup).toContain('矿坑生命')
     expect(markup).toContain('波次')
     expect(markup).toContain('Lv.1')
@@ -54,6 +54,8 @@ describe('mobile game layout', () => {
     expect(ECONOMY_CONFIG.towersPerRound).toBe(3)
     expect(markup).toContain('建造 2/3')
     expect(markup).toContain('再放 1 座塔')
+    expect(markup).toContain('松开后建塔')
+    expect(markup).toContain('剩余建造 1 次')
     expect(markup).toContain(`清障 ${ECONOMY_CONFIG.obstacleRemovalGoldCost}`)
     expect(gameStyles).toMatch(/width:\s*min\(100%,\s*430px\)/)
     expect(gameStyles).toMatch(/aspect-ratio:\s*4\s*\/\s*5/)

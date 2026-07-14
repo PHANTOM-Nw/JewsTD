@@ -28,7 +28,7 @@ describe('pathfinding', () => {
     expect(path).not.toBeNull()
     expect(path?.[0]).toEqual(MAP_CONFIG.startPos)
     expect(path?.at(-1)).toEqual(MAP_CONFIG.endPos)
-    expect(getPathLength(path ?? [])).toBe(18)
+    expect(getPathLength(path ?? [])).toBe(16)
 
     let previousIndex = -1
     for (const waypoint of WAYPOINTS) {
