@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAP_CONFIG, initializeGrid } from './map'
 import { findPath, getPathLength } from '../pathfinding/pathfinding'
-import { createEnemy, ENEMY_TYPES } from './enemies'
+import {
+  createEnemy,
+  ENEMY_TRAFFIC_CONFIG,
+  ENEMY_TYPES
+} from './enemies'
 
 describe('enemy configuration', () => {
   it('gives every enemy valid combat and economy values', () => {
@@ -47,10 +51,11 @@ describe('createEnemy', () => {
 
   it('applies the health multiplier and initializes a deterministic enemy', () => {
     const startPosition = { x: 40, y: 80 }
-    const enemy = createEnemy('basic', startPosition, 1.5)
+    const enemy = createEnemy('basic', startPosition, 1.5, 4)
 
     expect(enemy).toMatchObject({
       id: 'enemy_1234567_0.25',
+      spawnSequence: 4,
       type: 'basic',
       position: startPosition,
       health: 75,
@@ -70,5 +75,9 @@ describe('createEnemy', () => {
     expect(enemy.maxHealth).toBe(ENEMY_TYPES.boss.health * 2)
     expect(enemy.mineDamage).toBe(ENEMY_TYPES.boss.mineDamage)
     expect(enemy.mineDamage).toBeGreaterThan(ENEMY_TYPES.basic.mineDamage)
+  })
+
+  it('keeps enemy traffic spacing in configuration', () => {
+    expect(ENEMY_TRAFFIC_CONFIG.gap).toBeGreaterThanOrEqual(0)
   })
 })

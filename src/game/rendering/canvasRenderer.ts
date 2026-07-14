@@ -2,12 +2,12 @@ import type {
   Bullet,
   DamageNumber,
   Enemy,
-  EnemyType,
   GridCell,
   PlacementPreview,
   PlacementPreviewStatus,
   Tower
 } from '../types/game'
+import { ENEMY_TYPES } from '../config/enemies'
 import { MAP_CONFIG, WAYPOINTS } from '../config/map'
 import { getDamageNumberPresentation } from './damageNumberPresentation'
 import { getPlacementPreviewPresentation } from './placementPreviewPresentation'
@@ -37,12 +37,7 @@ interface CanvasRendererOptions {
   resolveImage?: SpriteResolver
 }
 
-const ENEMY_DRAW_SIZES: Record<EnemyType, number> = {
-  basic: 25,
-  fast: 23,
-  tank: 31,
-  boss: 38
-}
+const ENEMY_SPRITE_PADDING = 2
 
 interface PathStyle {
   glow: string
@@ -410,7 +405,7 @@ function drawEnemy(
   enemy: Enemy,
   resolveImage: SpriteResolver
 ) {
-  const size = ENEMY_DRAW_SIZES[enemy.type]
+  const size = ENEMY_TYPES[enemy.type].radius * 2 + ENEMY_SPRITE_PADDING
   drawSprite(
     ctx,
     resolveImage(ENEMY_SPRITES[enemy.type]),
