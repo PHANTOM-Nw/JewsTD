@@ -112,6 +112,26 @@ describe('building capacity rules', () => {
     expect(grid).toEqual(originalGrid)
   })
 
+  it('previews only placement geometry without rolling or revealing a gem', () => {
+    const random = vi.spyOn(Math, 'random')
+    const grid = initializeGrid()
+    const currentPath = findPath(grid, MAP_CONFIG.startPos, MAP_CONFIG.endPos)!
+    const candidate = listSafeBuildCells(grid, currentPath)[0]
+    const originalGrid = structuredClone(grid)
+
+    const preview = createBatchPlacementPreview(grid, candidate, 0)
+
+    expect(random).not.toHaveBeenCalled()
+    expect(preview).toEqual({
+      position: candidate,
+      path: expect.any(Array),
+      status: 'valid'
+    })
+    expect(preview).not.toHaveProperty('gemType')
+    expect(preview).not.toHaveProperty('level')
+    expect(grid).toEqual(originalGrid)
+  })
+
   it('reports blocked and non-buildable placement previews distinctly', () => {
     const grid = initializeGrid()
     const blockedPreview = createBatchPlacementPreview(grid, WAYPOINTS[1], 0)

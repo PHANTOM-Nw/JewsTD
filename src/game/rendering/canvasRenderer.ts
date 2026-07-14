@@ -10,6 +10,7 @@ import type {
 } from '../types/game'
 import { MAP_CONFIG, WAYPOINTS } from '../config/map'
 import { getDamageNumberPresentation } from './damageNumberPresentation'
+import { getPlacementPreviewPresentation } from './placementPreviewPresentation'
 import {
   ENEMY_SPRITES,
   GATE_SPRITES,
@@ -90,28 +91,6 @@ const PREVIEW_PATH_STYLES: Record<PlacementPreviewStatus, PathStyle> = {
     inner: '#ffd071',
     outerWidth: 11,
     innerWidth: 3.8
-  }
-}
-
-const PLACEMENT_PREVIEW_STYLES: Record<PlacementPreviewStatus, {
-  fill: string
-  stroke: string
-  badge: string
-}> = {
-  valid: {
-    fill: 'rgba(72, 222, 111, 0.24)',
-    stroke: '#8cff9f',
-    badge: '✓'
-  },
-  path_blocked: {
-    fill: 'rgba(255, 72, 68, 0.28)',
-    stroke: '#ff6965',
-    badge: '×'
-  },
-  insufficient_capacity: {
-    fill: 'rgba(255, 174, 47, 0.28)',
-    stroke: '#ffc45c',
-    badge: '!'
   }
 }
 
@@ -268,14 +247,13 @@ function drawTower(
 
 function drawPlacementPreview(
   ctx: CanvasRenderingContext2D,
-  preview: PlacementPreview,
-  resolveImage: SpriteResolver
+  preview: PlacementPreview
 ) {
   const { cellSize } = MAP_CONFIG
   const x = preview.position.col * cellSize
   const y = preview.position.row * cellSize
   const center = cellCenter(preview.position.row, preview.position.col)
-  const style = PLACEMENT_PREVIEW_STYLES[preview.status]
+  const style = getPlacementPreviewPresentation(preview.status)
 
   ctx.save()
   roundedRect(ctx, x + 3, y + 3, cellSize - 6, cellSize - 6, 9)
@@ -289,15 +267,39 @@ function drawPlacementPreview(
   ctx.stroke()
   ctx.setLineDash([])
 
-  ctx.globalAlpha = 0.5
-  drawSprite(
-    ctx,
-    resolveImage(getObstacleSpriteUrl(preview.position.row, preview.position.col)),
-    center.x,
-    center.y,
-    31
-  )
-  ctx.globalAlpha = 1
+  // 候选格只表达“这里会被占用”，不使用任何塔或障碍素材，
+  // 避免玩家把预览轮廓误认为即将生成的宝石种类或品质。
+  ctx.translate(center.x, center.y + 1)
+  ctx.shadowColor = 'rgba(54, 52, 48, 0.32)'
+  ctx.shadowBlur = 4
+  ctx.fillStyle = 'rgba(70, 68, 63, 0.22)'
+  ctx.beginPath()
+  ctx.ellipse(0, 10, 13, 4, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  const blocks = [
+    { x: -13, y: -2, width: 12, height: 11 },
+    { x: 1, y: -2, width: 12, height: 11 },
+    { x: -7, y: -12, width: 14, height: 10 }
+  ]
+  blocks.forEach(block => {
+    roundedRect(ctx, block.x, block.y, block.width, block.height, 3)
+    ctx.fillStyle = '#aaa69d'
+    ctx.strokeStyle = '#66635d'
+    ctx.lineWidth = 1.2
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.beginPath()
+    ctx.moveTo(block.x + 2.5, block.y + 2.5)
+    ctx.lineTo(block.x + block.width - 2.5, block.y + 2.5)
+    ctx.strokeStyle = 'rgba(249, 246, 237, 0.72)'
+    ctx.lineWidth = 1
+    ctx.stroke()
+  })
+
+  ctx.translate(-center.x, -center.y - 1)
+  ctx.shadowColor = style.stroke
   ctx.shadowBlur = 4
   ctx.fillStyle = style.stroke
   ctx.strokeStyle = '#fff8dc'
@@ -493,7 +495,7 @@ export function renderGameScene(
   })
   scene.towers.forEach(tower => drawTower(ctx, tower, resolveImage))
   if (scene.placementPreview) {
-    drawPlacementPreview(ctx, scene.placementPreview, resolveImage)
+    drawPlacementPreview(ctx, scene.placementPreview)
   }
   scene.bullets.forEach(bullet => drawBullet(ctx, bullet))
   scene.damageNumbers.forEach(damageNumber => drawDamageNumber(ctx, damageNumber))
