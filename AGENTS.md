@@ -1,0 +1,29 @@
+# 宝石 TD 仓库约定
+
+## 项目目标
+
+这是一个参考经典宝石 TD 玩法的 React + TypeScript + Canvas 单机小游戏。优先保持一局游戏的核心循环可玩：随机建塔、五选一、迷宫寻路、波次战斗、合成成长。
+
+## 修改前先读
+
+- `README.md`
+- `docs/architecture/overview.md`
+- `docs/development/conventions.md`
+- 涉及玩法时阅读 `docs/product/gameplay.md`
+
+## 代码边界
+
+- 应用装配放 `src/app/`。
+- 游戏代码放 `src/game/`，按最具体职责选择子目录。
+- 手工检查和未接入正式界面的工具放 `src/devtools/`，生产入口不得导入它们。
+- 游戏数值以 `src/game/config/` 为唯一事实来源。
+- UI 组件不得直接修改 `useGameEngine` 的内部 state；新增行为应通过引擎动作暴露。
+- 不在缺少回归测试时整体重写 `useGameEngine`，优先小步提取纯函数。
+
+## 风格与验证
+
+- TypeScript 使用 2 空格、单引号、无分号；类型使用 `import type`。
+- 不通过禁用 lint 规则绕过 Hook 依赖和类型问题。
+- 每次代码变更至少运行 `npm run lint` 和 `npm run build`。
+- 玩法、公共接口或目录变化必须同步当前文档；一次性记录放 `docs/records/YYYY-MM-DD-topic.md`。
+- `docs/records/archive/` 是历史材料，除添加归档说明外不要把它当作当前规范维护。
