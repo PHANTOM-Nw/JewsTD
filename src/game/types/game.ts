@@ -118,6 +118,30 @@ export interface Bullet {
   pierce?: boolean
 }
 
+export type DamageNumberType = Bullet['damageType'] | 'poison'
+
+export interface DamageNumber {
+  id: string
+  position: Position
+  amount: number
+  damageType: DamageNumberType
+  critical: boolean
+  elapsedMs: number
+  durationMs: number
+  horizontalOffset: number
+}
+
+export type PlacementPreviewStatus =
+  | 'valid'
+  | 'path_blocked'
+  | 'insufficient_capacity'
+
+export interface PlacementPreview {
+  position: { row: number; col: number }
+  path: Array<{ row: number; col: number }> | null
+  status: PlacementPreviewStatus
+}
+
 // 地图格子
 export interface GridCell {
   row: number
@@ -143,7 +167,7 @@ export interface WaveConfig {
 
 // 游戏状态
 export interface GameState {
-  wood: number           // 木材(每波数量由经济配置决定)
+  wood: number           // 剩余建造次数(每波数量由经济配置决定)
   gold: number           // 金币
   mineHealth: number     // 矿坑生命
   maxMineHealth: number  // 最大矿坑生命

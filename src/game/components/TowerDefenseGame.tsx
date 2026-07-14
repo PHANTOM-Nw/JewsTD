@@ -16,6 +16,8 @@ export const TowerDefenseGame: React.FC = () => {
   const {
     uiState,
     gameStateRef,
+    previewTowerPlacement,
+    clearPlacementPreview,
     placeTower,
     removeObstacle,
     finalizeTowers,
@@ -48,7 +50,8 @@ export const TowerDefenseGame: React.FC = () => {
     const { grid, towers } = gameStateRef.current
     
     // 检查点击的位置是否有塔或障碍物
-    const cell = grid[gridPos.row][gridPos.col]
+    const cell = grid[gridPos.row]?.[gridPos.col]
+    if (!cell) return
     
     if (cell.type === 'tower') {
       // 点击的是已有塔 - 现有逻辑保持不变
@@ -93,9 +96,9 @@ export const TowerDefenseGame: React.FC = () => {
       return
     }
     
-    // 检查是否还有木材
+    // 检查是否还有剩余建造次数
     if (uiState.wood <= 0) {
-      console.warn('木材已用完,无法放置新塔')
+      console.warn('剩余建造次数已用完,无法放置新塔')
       return
     }
     
@@ -172,7 +175,11 @@ export const TowerDefenseGame: React.FC = () => {
       {/* 游戏主体区域 */}
       <div className="game-main">
         <div className="game-board">
-          <GameCanvas onClick={handleCanvasClick} />
+          <GameCanvas
+            onClick={handleCanvasClick}
+            onPlacementPreview={previewTowerPlacement}
+            onPlacementPreviewEnd={clearPlacementPreview}
+          />
           
           {/* 决策对话框 */}
           {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (

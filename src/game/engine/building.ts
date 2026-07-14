@@ -1,6 +1,6 @@
 import { MAP_CONFIG } from '../config/map'
 import { findPath } from '../pathfinding/pathfinding'
-import type { GridCell } from '../types/game'
+import type { GridCell, PlacementPreview } from '../types/game'
 
 export interface GridPosition {
   row: number
@@ -37,6 +37,13 @@ function cloneGrid(grid: GridCell[][]): GridCell[][] {
 
 function calculateConfiguredPath(grid: GridCell[][]): GridPosition[] | null {
   return findPath(grid, MAP_CONFIG.startPos, MAP_CONFIG.endPos)
+}
+
+export function getRemainingBatchPlacements(
+  batchSize: number,
+  placedCount: number
+): number {
+  return Math.max(0, batchSize - placedCount - 1)
 }
 
 /**
@@ -112,6 +119,31 @@ export function evaluateBatchPlacement(
     canPlace: true,
     path,
     safeBuildCells
+  }
+}
+
+/**
+ * 将放置评估转换为 Canvas 可渲染的瞬时预览，不修改输入网格。
+ * 非空格不属于落塔预览范围，直接返回 null。
+ */
+export function createBatchPlacementPreview(
+  grid: GridCell[][],
+  position: GridPosition,
+  remainingPlacements: number
+): PlacementPreview | null {
+  const result = evaluateBatchPlacement(grid, position, remainingPlacements)
+  if (result.failure === 'invalid_cell') return null
+
+  const status = result.canPlace
+    ? 'valid'
+    : result.failure === 'insufficient_capacity'
+      ? 'insufficient_capacity'
+      : 'path_blocked'
+
+  return {
+    position: { ...position },
+    path: result.path,
+    status
   }
 }
 

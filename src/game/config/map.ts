@@ -9,11 +9,11 @@ export const WAYPOINTS: ReadonlyArray<{
   col: number
   label?: string
 }> = [
-  { row: 0, col: 1, label: '起点' },
+  { row: 0, col: 0, label: '起点' },
   { row: 3, col: 1, label: '转折点1' },
   { row: 3, col: 6, label: '转折点2' },
   { row: 7, col: 6, label: '转折点3' },
-  { row: 9, col: 2, label: '终点' }
+  { row: 9, col: 7, label: '终点' }
 ] as const
 
 const startWaypoint = WAYPOINTS[0]!
@@ -36,7 +36,7 @@ export const MAP_CONFIG = {
  * 3. BFS在相邻必经点之间独立计算最短路径
  * 
  * 10×8 竖向地图使用5个点形成S形基础路线:
- * 起点(0,1) → (3,1) → (3,6) → (7,6) → 终点(9,2)
+ * 起点(0,0) → (3,1) → (3,6) → (7,6) → 终点(9,7)
  * 
  * 注意: 地图中央不设置特殊格,与其他空格一样可用于建造
  */

@@ -1,11 +1,15 @@
 import type {
   Bullet,
+  DamageNumber,
   Enemy,
   EnemyType,
   GridCell,
+  PlacementPreview,
+  PlacementPreviewStatus,
   Tower
 } from '../types/game'
 import { MAP_CONFIG, WAYPOINTS } from '../config/map'
+import { getDamageNumberPresentation } from './damageNumberPresentation'
 import {
   ENEMY_SPRITES,
   GATE_SPRITES,
@@ -18,9 +22,11 @@ import {
 export interface CanvasScene {
   grid: GridCell[][]
   currentPath: Array<{ row: number; col: number }> | null
+  placementPreview: PlacementPreview | null
   enemies: Enemy[]
   towers: Tower[]
   bullets: Bullet[]
+  damageNumbers: DamageNumber[]
   gameTime: number
 }
 
@@ -35,6 +41,78 @@ const ENEMY_DRAW_SIZES: Record<EnemyType, number> = {
   fast: 23,
   tank: 31,
   boss: 38
+}
+
+interface PathStyle {
+  glow: string
+  outer: string
+  inner: string
+  outerWidth: number
+  innerWidth: number
+  dash?: number[]
+}
+
+const CURRENT_PATH_STYLE: PathStyle = {
+  glow: 'rgba(46, 218, 225, 0.82)',
+  outer: 'rgba(55, 220, 225, 0.28)',
+  inner: '#73f4ed',
+  outerWidth: 10,
+  innerWidth: 3.4
+}
+
+const MUTED_PATH_STYLE: PathStyle = {
+  glow: 'rgba(46, 218, 225, 0.24)',
+  outer: 'rgba(55, 220, 225, 0.12)',
+  inner: 'rgba(115, 244, 237, 0.48)',
+  outerWidth: 8,
+  innerWidth: 2.2,
+  dash: [5, 5]
+}
+
+const PREVIEW_PATH_STYLES: Record<PlacementPreviewStatus, PathStyle> = {
+  valid: {
+    glow: 'rgba(94, 255, 137, 0.88)',
+    outer: 'rgba(65, 222, 111, 0.32)',
+    inner: '#9affad',
+    outerWidth: 11,
+    innerWidth: 3.8
+  },
+  path_blocked: {
+    glow: 'rgba(255, 83, 78, 0.88)',
+    outer: 'rgba(255, 83, 78, 0.3)',
+    inner: '#ff7772',
+    outerWidth: 11,
+    innerWidth: 3.8
+  },
+  insufficient_capacity: {
+    glow: 'rgba(255, 181, 58, 0.88)',
+    outer: 'rgba(255, 174, 47, 0.3)',
+    inner: '#ffd071',
+    outerWidth: 11,
+    innerWidth: 3.8
+  }
+}
+
+const PLACEMENT_PREVIEW_STYLES: Record<PlacementPreviewStatus, {
+  fill: string
+  stroke: string
+  badge: string
+}> = {
+  valid: {
+    fill: 'rgba(72, 222, 111, 0.24)',
+    stroke: '#8cff9f',
+    badge: '✓'
+  },
+  path_blocked: {
+    fill: 'rgba(255, 72, 68, 0.28)',
+    stroke: '#ff6965',
+    badge: '×'
+  },
+  insufficient_capacity: {
+    fill: 'rgba(255, 174, 47, 0.28)',
+    stroke: '#ffc45c',
+    badge: '!'
+  }
 }
 
 function cellCenter(row: number, col: number) {
@@ -87,27 +165,29 @@ function drawGrid(
 
 function drawPath(
   ctx: CanvasRenderingContext2D,
-  path: CanvasScene['currentPath']
+  path: CanvasScene['currentPath'],
+  style: PathStyle = CURRENT_PATH_STYLE
 ) {
   if (!path || path.length === 0) return
 
   ctx.save()
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
+  ctx.setLineDash(style.dash ?? [])
   ctx.beginPath()
   path.forEach((point, index) => {
     const { x, y } = cellCenter(point.row, point.col)
     if (index === 0) ctx.moveTo(x, y)
     else ctx.lineTo(x, y)
   })
-  ctx.strokeStyle = 'rgba(55, 220, 225, 0.28)'
-  ctx.lineWidth = 10
-  ctx.shadowColor = 'rgba(46, 218, 225, 0.82)'
+  ctx.strokeStyle = style.outer
+  ctx.lineWidth = style.outerWidth
+  ctx.shadowColor = style.glow
   ctx.shadowBlur = 8
   ctx.stroke()
   ctx.shadowBlur = 0
-  ctx.strokeStyle = '#73f4ed'
-  ctx.lineWidth = 3.4
+  ctx.strokeStyle = style.inner
+  ctx.lineWidth = style.innerWidth
   ctx.stroke()
   ctx.restore()
 }
@@ -139,8 +219,8 @@ function drawGates(
 ) {
   const start = cellCenter(MAP_CONFIG.startPos.row, MAP_CONFIG.startPos.col)
   const end = cellCenter(MAP_CONFIG.endPos.row, MAP_CONFIG.endPos.col)
-  drawSprite(ctx, resolveImage(GATE_SPRITES.entrance), start.x, start.y, 45)
-  drawSprite(ctx, resolveImage(GATE_SPRITES.exit), end.x, end.y, 45)
+  drawSprite(ctx, resolveImage(GATE_SPRITES.entrance), start.x, start.y, 40)
+  drawSprite(ctx, resolveImage(GATE_SPRITES.exit), end.x, end.y, 40)
 }
 
 function drawObstacles(
@@ -184,6 +264,55 @@ function drawTower(
     tower.position.y,
     40 * qualityScale
   )
+}
+
+function drawPlacementPreview(
+  ctx: CanvasRenderingContext2D,
+  preview: PlacementPreview,
+  resolveImage: SpriteResolver
+) {
+  const { cellSize } = MAP_CONFIG
+  const x = preview.position.col * cellSize
+  const y = preview.position.row * cellSize
+  const center = cellCenter(preview.position.row, preview.position.col)
+  const style = PLACEMENT_PREVIEW_STYLES[preview.status]
+
+  ctx.save()
+  roundedRect(ctx, x + 3, y + 3, cellSize - 6, cellSize - 6, 9)
+  ctx.fillStyle = style.fill
+  ctx.fill()
+  ctx.setLineDash([4, 3])
+  ctx.lineWidth = 2.2
+  ctx.strokeStyle = style.stroke
+  ctx.shadowColor = style.stroke
+  ctx.shadowBlur = 7
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  ctx.globalAlpha = 0.5
+  drawSprite(
+    ctx,
+    resolveImage(getObstacleSpriteUrl(preview.position.row, preview.position.col)),
+    center.x,
+    center.y,
+    31
+  )
+  ctx.globalAlpha = 1
+  ctx.shadowBlur = 4
+  ctx.fillStyle = style.stroke
+  ctx.strokeStyle = '#fff8dc'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.arc(x + cellSize - 9, y + 9, 7, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  ctx.shadowBlur = 0
+  ctx.fillStyle = '#4c3217'
+  ctx.font = "900 12px ui-rounded, 'PingFang SC', sans-serif"
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(style.badge, x + cellSize - 9, y + 9.4)
+  ctx.restore()
 }
 
 function roundedRect(
@@ -308,6 +437,32 @@ function drawBullet(ctx: CanvasRenderingContext2D, bullet: Bullet) {
   ctx.restore()
 }
 
+function drawDamageNumber(
+  ctx: CanvasRenderingContext2D,
+  damageNumber: DamageNumber
+) {
+  const presentation = getDamageNumberPresentation(damageNumber)
+
+  ctx.save()
+  ctx.globalAlpha = presentation.opacity
+  ctx.translate(presentation.x, presentation.y)
+  ctx.scale(presentation.scale, presentation.scale)
+  ctx.font = `900 ${presentation.fontSize}px ui-rounded, 'PingFang SC', 'Microsoft YaHei', sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'alphabetic'
+  ctx.lineJoin = 'round'
+  ctx.miterLimit = 2
+  ctx.lineWidth = presentation.lineWidth
+  ctx.strokeStyle = presentation.stroke
+  ctx.fillStyle = presentation.fill
+  ctx.shadowColor = presentation.shadow
+  ctx.shadowBlur = damageNumber.critical ? 6 : 4
+  ctx.strokeText(presentation.text, 0, 0)
+  ctx.shadowBlur = 1.5
+  ctx.fillText(presentation.text, 0, 0)
+  ctx.restore()
+}
+
 export function renderGameScene(
   ctx: CanvasRenderingContext2D,
   scene: CanvasScene,
@@ -318,7 +473,18 @@ export function renderGameScene(
   ctx.clearRect(0, 0, cols * cellSize, rows * cellSize)
 
   drawGrid(ctx, scene.grid, resolveImage)
-  drawPath(ctx, scene.currentPath)
+  drawPath(
+    ctx,
+    scene.currentPath,
+    scene.placementPreview ? MUTED_PATH_STYLE : CURRENT_PATH_STYLE
+  )
+  if (scene.placementPreview?.path) {
+    drawPath(
+      ctx,
+      scene.placementPreview.path,
+      PREVIEW_PATH_STYLES[scene.placementPreview.status]
+    )
+  }
   drawWaypointMarkers(ctx)
   drawGates(ctx, resolveImage)
   drawObstacles(ctx, scene.grid, resolveImage)
@@ -326,5 +492,9 @@ export function renderGameScene(
     if (!enemy.reachedEnd) drawEnemy(ctx, enemy, resolveImage)
   })
   scene.towers.forEach(tower => drawTower(ctx, tower, resolveImage))
+  if (scene.placementPreview) {
+    drawPlacementPreview(ctx, scene.placementPreview, resolveImage)
+  }
   scene.bullets.forEach(bullet => drawBullet(ctx, bullet))
+  scene.damageNumbers.forEach(damageNumber => drawDamageNumber(ctx, damageNumber))
 }
