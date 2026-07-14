@@ -1,0 +1,250 @@
+{
+  "baseUrl": "http://127.0.0.1:5173/",
+  "browser": "150.0.7871.46",
+  "openingPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-opening-390x844.png",
+  "decisionPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-decision-390x844.png",
+  "readyPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-ready-390x844.png",
+  "synthesisPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-synthesis-390x844.png",
+  "playingPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-playing-390x844.png",
+  "comparisonPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/comparison-opening.png",
+  "openingMetrics": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "devicePixelRatio": 1,
+    "pageScrollHeight": 844,
+    "canvas": {
+      "x": 18,
+      "y": 172.25,
+      "width": 354,
+      "height": 442.5,
+      "cellWidth": 44.25,
+      "cellHeight": 44.25
+    },
+    "shell": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "action": {
+      "width": 222.34375,
+      "height": 64,
+      "bottom": 707.75
+    },
+    "resourceCards": [
+      {
+        "width": 69.34375,
+        "height": 55
+      },
+      {
+        "width": 69.34375,
+        "height": 55
+      },
+      {
+        "width": 81.828125,
+        "height": 55
+      },
+      {
+        "width": 77.671875,
+        "height": 55
+      },
+      {
+        "width": 63.8125,
+        "height": 55
+      }
+    ],
+    "bodyOverflowX": false
+  },
+  "touchTargets": {
+    "opening": [
+      {
+        "name": "提升游戏等级，需要100金币",
+        "width": 59.8125,
+        "height": 51,
+        "disabled": true
+      },
+      {
+        "name": "关闭音效",
+        "width": 44,
+        "height": 44,
+        "disabled": false
+      },
+      {
+        "name": "重新开始",
+        "width": 44,
+        "height": 44,
+        "disabled": false
+      }
+    ],
+    "decision": [
+      {
+        "name": "提升游戏等级，需要100金币",
+        "width": 59.8125,
+        "height": 51,
+        "disabled": true
+      },
+      {
+        "name": "关闭音效",
+        "width": 44,
+        "height": 44,
+        "disabled": false
+      },
+      {
+        "name": "重新开始",
+        "width": 44,
+        "height": 44,
+        "disabled": false
+      },
+      {
+        "name": "黄玉 碎裂",
+        "width": 102,
+        "height": 78,
+        "disabled": false
+      },
+      {
+        "name": "蓝宝石 碎裂",
+        "width": 102,
+        "height": 78,
+        "disabled": false
+      },
+      {
+        "name": "黄玉 碎裂",
+        "width": 102,
+        "height": 78,
+        "disabled": false
+      },
+      {
+        "name": "保留此塔",
+        "width": 320,
+        "height": 48,
+        "disabled": false
+      }
+    ],
+    "synthesis": [
+      {
+        "name": "提升游戏等级，需要100金币",
+        "width": 59.8125,
+        "height": 51,
+        "disabled": true
+      },
+      {
+        "name": "关闭音效",
+        "width": 44,
+        "height": 44,
+        "disabled": false
+      },
+      {
+        "name": "重新开始",
+        "width": 44,
+        "height": 44,
+        "disabled": false
+      },
+      {
+        "name": "开始第 1 波",
+        "width": 222.34375,
+        "height": 64,
+        "disabled": false
+      },
+      {
+        "name": "关闭合成列表",
+        "width": 44,
+        "height": 44,
+        "disabled": false
+      }
+    ]
+  },
+  "responsiveCaptures": {
+    "compact": {
+      "width": 360,
+      "height": 800,
+      "topPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-opening-360x800.png",
+      "bottomPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-opening-360x800-bottom.png",
+      "beforeScroll": {
+        "shell": {
+          "clientHeight": 800,
+          "scrollHeight": 800,
+          "scrollTop": 0
+        },
+        "document": {
+          "clientHeight": 800,
+          "scrollHeight": 800,
+          "scrollY": 0
+        },
+        "canvas": {
+          "width": 352,
+          "height": 440,
+          "cellWidth": 44,
+          "cellHeight": 44
+        },
+        "action": {
+          "top": 609.25,
+          "bottom": 720.25,
+          "visible": true
+        },
+        "overflowX": false
+      },
+      "afterScroll": {
+        "shellScrollTop": 0,
+        "documentScrollY": 0,
+        "action": {
+          "top": 609.25,
+          "bottom": 720.25,
+          "visible": true
+        }
+      },
+      "errors": []
+    },
+    "short": {
+      "width": 390,
+      "height": 693,
+      "topPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-opening-390x693.png",
+      "bottomPath": "/home/calvin/njw_project/JewsTD/docs/records/assets/2026-07-14-mobile-q-style/implementation-opening-390x693-bottom.png",
+      "beforeScroll": {
+        "shell": {
+          "clientHeight": 755,
+          "scrollHeight": 755,
+          "scrollTop": 0
+        },
+        "document": {
+          "clientHeight": 693,
+          "scrollHeight": 755,
+          "scrollY": 0
+        },
+        "canvas": {
+          "width": 354,
+          "height": 442.5,
+          "cellWidth": 44.25,
+          "cellHeight": 44.25
+        },
+        "action": {
+          "top": 632.75,
+          "bottom": 744.75,
+          "visible": true
+        },
+        "overflowX": false
+      },
+      "afterScroll": {
+        "shellScrollTop": 0,
+        "documentScrollY": 62,
+        "action": {
+          "top": 570.75,
+          "bottom": 682.75,
+          "visible": true
+        }
+      },
+      "errors": []
+    }
+  },
+  "choiceCount": 3,
+  "interactions": {
+    "placedThreeTowers": true,
+    "finalizedChoice": true,
+    "startedWave": true,
+    "pausedWave": true,
+    "resumedWave": true
+  },
+  "consoleErrors": [],
+  "pageErrors": []
+}

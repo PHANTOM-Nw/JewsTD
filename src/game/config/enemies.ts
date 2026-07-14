@@ -3,7 +3,7 @@ import type { Enemy, EnemyType } from '../types/game'
 export const ENEMY_TYPES = {
   basic: {
     health: 50,
-    speed: 60,
+    speed: 50,
     armor: 0,
     magicResist: 0,
     reward: 5,
@@ -14,7 +14,7 @@ export const ENEMY_TYPES = {
   },
   fast: {
     health: 35,
-    speed: 100,
+    speed: 85,
     armor: 0,
     magicResist: 0,
     reward: 7,
@@ -25,7 +25,7 @@ export const ENEMY_TYPES = {
   },
   tank: {
     health: 150,
-    speed: 40,
+    speed: 34,
     armor: 5,
     magicResist: 0.2,
     reward: 15,
@@ -36,7 +36,7 @@ export const ENEMY_TYPES = {
   },
   boss: {
     health: 500,
-    speed: 32,
+    speed: 27,
     armor: 10,
     magicResist: 0.3,
     reward: 75,

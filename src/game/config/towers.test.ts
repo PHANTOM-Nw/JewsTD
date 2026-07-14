@@ -47,6 +47,41 @@ describe('special tower crafting', () => {
   })
 })
 
+describe('mobile board spatial balance', () => {
+  it('keeps every base tower within the configured 100 to 150 pixel range', () => {
+    const ranges = Object.values(BASE_TOWER_STATS).flatMap(levels => (
+      Object.values(levels).map(stats => stats.range)
+    ))
+
+    expect(Math.min(...ranges)).toBe(100)
+    expect(Math.max(...ranges)).toBe(150)
+    ranges.forEach(range => {
+      expect(range).toBeGreaterThanOrEqual(100)
+      expect(range).toBeLessThanOrEqual(150)
+    })
+  })
+
+  it('caps special tower range and every configured splash radius', () => {
+    const specialStats = Object.values(SPECIAL_TOWER_RECIPES).map(recipe => recipe.stats)
+    const splashRadii = [
+      ...Object.values(BASE_TOWER_STATS).flatMap(levels => (
+        Object.values(levels).flatMap(stats => (
+          stats.splashRadius === undefined ? [] : [stats.splashRadius]
+        ))
+      )),
+      ...specialStats.flatMap(stats => (
+        stats.splashRadius === undefined ? [] : [stats.splashRadius]
+      ))
+    ]
+
+    specialStats.forEach(stats => {
+      expect(stats.range).toBeLessThanOrEqual(145)
+    })
+    expect(Math.min(...splashRadii)).toBe(40)
+    expect(Math.max(...splashRadii)).toBe(60)
+  })
+})
+
 describe('regular tower synthesis pairs', () => {
   it('finds pairs for every configured base gem at each upgradeable level', () => {
     const gemTypes = Object.keys(BASE_TOWER_STATS) as Array<keyof typeof BASE_TOWER_STATS>

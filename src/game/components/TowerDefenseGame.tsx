@@ -5,10 +5,11 @@ import { GameUI } from './GameUI'
 import { BuildPanel } from './BuildPanel'
 import { SynthesisDialog } from './SynthesisDialog'
 import { WaveCompletionNotice } from './WaveCompletionNotice'
-import type { GemType, GemLevel, Tower } from '../types/game'
-import { GEM_COLORS, GEM_NAMES, LEVEL_NAMES } from '../config/towers'
+import type { GemLevel, GemType, Tower } from '../types/game'
+import { GEM_NAMES, LEVEL_NAMES } from '../config/towers'
 import { ECONOMY_CONFIG } from '../config/economy'
 import { canInspectSynthesisFromTower, canSynthesizeTowers } from '../engine/gameFlow'
+import { getTowerSpriteUrl } from '../rendering/spriteRegistry'
 import './TowerDefenseGame.css'
 
 export const TowerDefenseGame: React.FC = () => {
@@ -32,11 +33,6 @@ export const TowerDefenseGame: React.FC = () => {
   const [selectedTowerForDecision, setSelectedTowerForDecision] = useState<Tower | null>(null)
   const [showSynthesisDialog, setShowSynthesisDialog] = useState(false)
   const [selectedTowerForSynthesisId, setSelectedTowerForSynthesisId] = useState<string | null>(null)
-
-  // 辅助函数:获取宝石颜色
-  const getGemColor = (gemType: GemType): string => {
-    return GEM_COLORS[gemType]
-  }
 
   // 辅助函数:获取宝石名称
   const getGemName = (gemType: GemType): string => {
@@ -107,7 +103,7 @@ export const TowerDefenseGame: React.FC = () => {
     if (tower) {
       setCurrentBatchTowers(prev => [...prev, tower.id])
       
-      // 如果已经放置了5个塔,自动进入决策模式
+      // 达到当前配置的批次数量后，自动进入决策模式
       if (currentBatchTowers.length + 1 >= ECONOMY_CONFIG.towersPerRound) {
         // 默认选中第一个塔
         const firstTowerId = currentBatchTowers.length > 0 
@@ -164,10 +160,7 @@ export const TowerDefenseGame: React.FC = () => {
       {/* 顶部UI */}
       <GameUI
         uiState={uiState}
-        onStartWave={handleStartWave}
-        onPause={handlePause}
-        onResume={handleResume}
-        onUpgradeGameLevel={upgradeGameLevel}  // ✅ 新增
+        onUpgradeGameLevel={upgradeGameLevel}
         onResetGame={handleResetGame}
       />
 
@@ -178,135 +171,77 @@ export const TowerDefenseGame: React.FC = () => {
       
       {/* 游戏主体区域 */}
       <div className="game-main">
-        {/* 左侧建造面板 */}
-        <BuildPanel
-          wood={uiState.wood}
-          gold={uiState.gold}
-          placedCount={currentBatchTowers.length}
-          gameStatus={uiState.gameStatus}
-        />
-        
-        {/* 中间Canvas */}
         <div className="game-board">
-          <GameCanvas 
-            onClick={handleCanvasClick} 
-            currentPath={gameStateRef.current.currentPath}
-          />
+          <GameCanvas onClick={handleCanvasClick} />
           
           {/* 决策对话框 */}
           {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (
-            <div className="tower-decision">
-              <h3 style={{ margin: '0 0 15px 0', textAlign: 'center', color: '#333' }}>
-                选择要保留的塔
-              </h3>
+            <section className="tower-decision" role="dialog" aria-modal="true" aria-labelledby="tower-decision-title">
+              <span className="tower-decision__eyebrow">三选一</span>
+              <h2 id="tower-decision-title">选择要保留的塔</h2>
 
-              <div style={{
-                display: 'flex',
-                gap: '8px',
-                justifyContent: 'center',
-                marginBottom: '15px'
-              }}>
+              <div className="tower-decision__choices">
                 {currentBatchTowers.map(towerId => {
                   const tower = gameStateRef.current.towers.find(candidate => candidate.id === towerId)
                   if (!tower?.gemType) return null
 
                   const isSelected = tower.id === selectedTowerForDecision.id
+                  const spriteUrl = getTowerSpriteUrl(tower)
                   return (
                     <button
                       key={tower.id}
+                      type="button"
+                      className={`tower-choice${isSelected ? ' tower-choice--selected' : ''}`}
                       onClick={() => setSelectedTowerForDecision(tower)}
-                      title={`${getGemName(tower.gemType)} ${getLevelName(tower.level)}`}
-                      style={{
-                        width: '44px',
-                        height: '44px',
-                        background: getGemColor(tower.gemType),
-                        border: isSelected ? '4px solid #2196F3' : '2px solid #666',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        color: tower.gemType === 'diamond' ? '#333' : 'white',
-                        fontWeight: 'bold'
-                      }}
+                      aria-pressed={isSelected}
+                      aria-label={`${getGemName(tower.gemType)} ${getLevelName(tower.level)}`}
                     >
-                      {tower.level.substring(0, 1).toUpperCase()}
+                      {spriteUrl && <img src={spriteUrl} alt="" />}
+                      <span>{getGemName(tower.gemType)}</span>
                     </button>
                   )
                 })}
               </div>
-              
-              {/* 显示选中的塔信息 */}
-              <div style={{
-                padding: '15px',
-                background: '#F5F5F5',
-                borderRadius: '6px',
-                marginBottom: '15px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  {/* 塔的图标 */}
-                  <div style={{
-                    width: '60px',
-                    height: '60px',
-                    background: getGemColor(selectedTowerForDecision.gemType!),
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '24px',
-                    fontWeight: 'bold',
-                    color: 'white',
-                    border: '3px solid #333'
-                  }}>
-                    {selectedTowerForDecision.level.substring(0, 1).toUpperCase()}
-                  </div>
-                  
-                  {/* 塔的信息 */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#333', marginBottom: '5px' }}>
-                      {getGemName(selectedTowerForDecision.gemType!)}
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#666' }}>
-                      等级: {getLevelName(selectedTowerForDecision.level)}
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#666' }}>
-                      伤害: {selectedTowerForDecision.damage} | 范围: {selectedTowerForDecision.range}
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#666' }}>
-                      攻击速度: {selectedTowerForDecision.attackSpeed}ms
-                    </div>
-                  </div>
+
+              <div className="tower-decision__detail">
+                {getTowerSpriteUrl(selectedTowerForDecision) && (
+                  <img src={getTowerSpriteUrl(selectedTowerForDecision)!} alt="" />
+                )}
+                <div>
+                  <strong>{getGemName(selectedTowerForDecision.gemType!)}</strong>
+                  <span>{getLevelName(selectedTowerForDecision.level)}</span>
+                  <small>
+                    伤害 {selectedTowerForDecision.damage} · 范围 {selectedTowerForDecision.range} ·
+                    攻速 {selectedTowerForDecision.attackSpeed}ms
+                  </small>
                 </div>
               </div>
-              
-              {/* 操作按钮 */}
-              <div style={{ display: 'flex' }}>
-                <button
-                  onClick={() => handleFinalizeTowers(selectedTowerForDecision.id)}
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    background: '#4CAF50',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  ✓ 保留在场上
-                </button>
-              </div>
-              
-              <p style={{ 
-                fontSize: '12px', 
-                color: '#999', 
-                marginTop: '10px',
-                textAlign: 'center'
-              }}>
-                提示: 选择保留后,其余4个塔将变成障碍物
+
+              <button
+                type="button"
+                className="tower-decision__confirm"
+                onClick={() => handleFinalizeTowers(selectedTowerForDecision.id)}
+              >
+                保留此塔
+              </button>
+              <p className="tower-decision__hint">
+                其余 {ECONOMY_CONFIG.towersPerRound - 1} 座塔会风化成障碍，敌人的路线将重新计算。
               </p>
-            </div>
+            </section>
           )}
         </div>
+
+        <BuildPanel
+          wood={uiState.wood}
+          gold={uiState.gold}
+          placedCount={currentBatchTowers.length}
+          gameStatus={uiState.gameStatus}
+          currentWave={uiState.wave}
+          onStartWave={handleStartWave}
+          onPause={handlePause}
+          onResume={handleResume}
+          onReset={handleResetGame}
+        />
       </div>
       
       {/* 合成对话框 */}
@@ -332,27 +267,15 @@ export const TowerDefenseGame: React.FC = () => {
       
       {/* 游戏状态提示 */}
       {uiState.gameStatus === 'game_over' && (
-        <div style={{
-          marginTop: '20px',
-          padding: '20px',
-          background: '#FFEBEE',
-          borderRadius: '8px',
-          textAlign: 'center'
-        }}>
-          <h2 style={{ color: '#F44336', margin: '0 0 10px 0' }}>游戏结束!</h2>
+        <div className="game-result game-result--over">
+          <h2>游戏结束!</h2>
           <p>矿坑生命归零,你坚持了 {uiState.wave} 波</p>
         </div>
       )}
       
       {uiState.gameStatus === 'victory' && (
-        <div style={{
-          marginTop: '20px',
-          padding: '20px',
-          background: '#E8F5E9',
-          borderRadius: '8px',
-          textAlign: 'center'
-        }}>
-          <h2 style={{ color: '#4CAF50', margin: '0 0 10px 0' }}>胜利!</h2>
+        <div className="game-result game-result--victory">
+          <h2>胜利!</h2>
           <p>恭喜你完成了所有12波!</p>
         </div>
       )}

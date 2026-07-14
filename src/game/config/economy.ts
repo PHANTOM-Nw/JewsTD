@@ -1,9 +1,10 @@
 export const ECONOMY_CONFIG = {
-  startingWood: 5,
-  woodPerRound: 5,
-  towersPerRound: 5,
+  startingWood: 3,
+  woodPerRound: 3,
+  towersPerRound: 3,
   towerWoodCost: 1,
   startingGold: 50,
-  obstacleRemovalGoldCost: 10,
+  obstacleRemovalGoldCost: 20,
+  maxObstacles: 24,
   startingMineHealth: 15
 } as const

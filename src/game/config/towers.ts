@@ -20,19 +20,19 @@ export const BASE_TOWER_STATS: Record<GemType, Record<GemLevel, {
   // ========== 1. 紫水晶(Amethyst) - 高伤害单体物理攻击 ==========
   amethyst: {
     chipped: { 
-      damage: 25, range: 200, attackSpeed: 1200, damageType: 'physical',
+      damage: 25, range: 125, attackSpeed: 1200, damageType: 'physical',
       critChance: 0.1, critMultiplier: 2.0  // 10%暴击,2倍伤害
     },
     flawed: { 
-      damage: 30, range: 210, attackSpeed: 1200, damageType: 'physical',
+      damage: 30, range: 130, attackSpeed: 1200, damageType: 'physical',
       critChance: 0.12, critMultiplier: 2.0
     },
     normal: { 
-      damage: 40, range: 220, attackSpeed: 1200, damageType: 'physical',
+      damage: 40, range: 135, attackSpeed: 1200, damageType: 'physical',
       critChance: 0.15, critMultiplier: 2.0
     },
     flawless: { 
-      damage: 55, range: 230, attackSpeed: 1100, damageType: 'physical',
+      damage: 55, range: 145, attackSpeed: 1100, damageType: 'physical',
       critChance: 0.2, critMultiplier: 2.5  // 20%暴击,2.5倍伤害
     }
   },
@@ -40,19 +40,19 @@ export const BASE_TOWER_STATS: Record<GemType, Record<GemLevel, {
   // ========== 2. 钻石(Diamond) - 快速多目标物理攻击 ==========
   diamond: {
     chipped: { 
-      damage: 8, range: 180, attackSpeed: 400, damageType: 'physical',
+      damage: 8, range: 110, attackSpeed: 400, damageType: 'physical',
       multiTarget: 3
     },
     flawed: { 
-      damage: 10, range: 190, attackSpeed: 400, damageType: 'physical',
+      damage: 10, range: 120, attackSpeed: 400, damageType: 'physical',
       multiTarget: 3
     },
     normal: { 
-      damage: 13, range: 200, attackSpeed: 350, damageType: 'physical',
+      damage: 13, range: 125, attackSpeed: 350, damageType: 'physical',
       multiTarget: 4
     },
     flawless: { 
-      damage: 17, range: 210, attackSpeed: 300, damageType: 'physical',
+      damage: 17, range: 130, attackSpeed: 300, damageType: 'physical',
       multiTarget: 5
     }
   },
@@ -60,39 +60,39 @@ export const BASE_TOWER_STATS: Record<GemType, Record<GemLevel, {
   // ========== 3. 黄玉(Topaz) - 溅射范围物理伤害 ==========
   topaz: {
     chipped: { 
-      damage: 15, range: 160, attackSpeed: 1000, damageType: 'physical',
-      splashRadius: 60
+      damage: 15, range: 100, attackSpeed: 1000, damageType: 'physical',
+      splashRadius: 40
     },
     flawed: { 
-      damage: 18, range: 170, attackSpeed: 1000, damageType: 'physical',
-      splashRadius: 70
+      damage: 18, range: 105, attackSpeed: 1000, damageType: 'physical',
+      splashRadius: 45
     },
     normal: { 
-      damage: 24, range: 180, attackSpeed: 900, damageType: 'physical',
-      splashRadius: 80
+      damage: 24, range: 110, attackSpeed: 900, damageType: 'physical',
+      splashRadius: 50
     },
     flawless: { 
-      damage: 32, range: 190, attackSpeed: 800, damageType: 'physical',
-      splashRadius: 100
+      damage: 32, range: 120, attackSpeed: 800, damageType: 'physical',
+      splashRadius: 60
     }
   },
 
   // ========== 4. 蛋白石(Opal) - 减速魔法伤害 ==========
   opal: {
     chipped: { 
-      damage: 10, range: 200, attackSpeed: 800, damageType: 'magic',
+      damage: 10, range: 125, attackSpeed: 800, damageType: 'magic',
       slowEffect: 0.3  // 30%减速
     },
     flawed: { 
-      damage: 12, range: 210, attackSpeed: 800, damageType: 'magic',
+      damage: 12, range: 130, attackSpeed: 800, damageType: 'magic',
       slowEffect: 0.4  // 40%减速
     },
     normal: { 
-      damage: 16, range: 220, attackSpeed: 750, damageType: 'magic',
+      damage: 16, range: 135, attackSpeed: 750, damageType: 'magic',
       slowEffect: 0.5  // 50%减速
     },
     flawless: { 
-      damage: 22, range: 230, attackSpeed: 700, damageType: 'magic',
+      damage: 22, range: 145, attackSpeed: 700, damageType: 'magic',
       slowEffect: 0.6  // 60%减速
     }
   },
@@ -100,19 +100,19 @@ export const BASE_TOWER_STATS: Record<GemType, Record<GemLevel, {
   // ========== 5. 红宝石(Ruby) - 纯粹伤害+高暴击 ==========
   ruby: {
     chipped: { 
-      damage: 20, range: 190, attackSpeed: 1000, damageType: 'pure',
+      damage: 20, range: 120, attackSpeed: 1000, damageType: 'pure',
       critChance: 0.15, critMultiplier: 2.5
     },
     flawed: { 
-      damage: 25, range: 200, attackSpeed: 1000, damageType: 'pure',
+      damage: 25, range: 125, attackSpeed: 1000, damageType: 'pure',
       critChance: 0.18, critMultiplier: 2.5
     },
     normal: { 
-      damage: 35, range: 210, attackSpeed: 900, damageType: 'pure',
+      damage: 35, range: 130, attackSpeed: 900, damageType: 'pure',
       critChance: 0.22, critMultiplier: 3.0
     },
     flawless: { 
-      damage: 50, range: 220, attackSpeed: 800, damageType: 'pure',
+      damage: 50, range: 135, attackSpeed: 800, damageType: 'pure',
       critChance: 0.3, critMultiplier: 3.5  // 30%暴击,3.5倍伤害
     }
   },
@@ -120,19 +120,19 @@ export const BASE_TOWER_STATS: Record<GemType, Record<GemLevel, {
   // ========== 6. 蓝宝石(Sapphire) - 魔法穿透伤害 ==========
   sapphire: {
     chipped: { 
-      damage: 18, range: 210, attackSpeed: 900, damageType: 'magic',
+      damage: 18, range: 130, attackSpeed: 900, damageType: 'magic',
       pierce: true  // 穿透第一个敌人击中后面的
     },
     flawed: { 
-      damage: 22, range: 220, attackSpeed: 900, damageType: 'magic',
+      damage: 22, range: 135, attackSpeed: 900, damageType: 'magic',
       pierce: true
     },
     normal: { 
-      damage: 30, range: 230, attackSpeed: 850, damageType: 'magic',
+      damage: 30, range: 145, attackSpeed: 850, damageType: 'magic',
       pierce: true
     },
     flawless: { 
-      damage: 42, range: 240, attackSpeed: 800, damageType: 'magic',
+      damage: 42, range: 150, attackSpeed: 800, damageType: 'magic',
       pierce: true
     }
   },
@@ -140,19 +140,19 @@ export const BASE_TOWER_STATS: Record<GemType, Record<GemLevel, {
   // ========== 7. 翡翠(Emerald) - 毒素持续伤害 ==========
   emerald: {
     chipped: { 
-      damage: 12, range: 200, attackSpeed: 1100, damageType: 'magic',
+      damage: 12, range: 125, attackSpeed: 1100, damageType: 'magic',
       poisonDamage: 5, poisonDuration: 3000  // 每秒5点伤害,持续3秒
     },
     flawed: { 
-      damage: 15, range: 210, attackSpeed: 1100, damageType: 'magic',
+      damage: 15, range: 130, attackSpeed: 1100, damageType: 'magic',
       poisonDamage: 7, poisonDuration: 3500
     },
     normal: { 
-      damage: 20, range: 220, attackSpeed: 1000, damageType: 'magic',
+      damage: 20, range: 135, attackSpeed: 1000, damageType: 'magic',
       poisonDamage: 10, poisonDuration: 4000
     },
     flawless: { 
-      damage: 28, range: 230, attackSpeed: 900, damageType: 'magic',
+      damage: 28, range: 145, attackSpeed: 900, damageType: 'magic',
       poisonDamage: 15, poisonDuration: 5000  // 每秒15点伤害,持续5秒
     }
   },
@@ -160,19 +160,19 @@ export const BASE_TOWER_STATS: Record<GemType, Record<GemLevel, {
   // ========== 8. 黑曜石(Obsidian) - 眩晕控制 ==========
   obsidian: {
     chipped: { 
-      damage: 15, range: 180, attackSpeed: 1300, damageType: 'physical',
+      damage: 15, range: 110, attackSpeed: 1300, damageType: 'physical',
       stunChance: 0.1, stunDuration: 1000  // 10%概率眩晕1秒
     },
     flawed: { 
-      damage: 18, range: 190, attackSpeed: 1300, damageType: 'physical',
+      damage: 18, range: 120, attackSpeed: 1300, damageType: 'physical',
       stunChance: 0.12, stunDuration: 1200
     },
     normal: { 
-      damage: 25, range: 200, attackSpeed: 1200, damageType: 'physical',
+      damage: 25, range: 125, attackSpeed: 1200, damageType: 'physical',
       stunChance: 0.15, stunDuration: 1500
     },
     flawless: { 
-      damage: 35, range: 210, attackSpeed: 1100, damageType: 'physical',
+      damage: 35, range: 130, attackSpeed: 1100, damageType: 'physical',
       stunChance: 0.2, stunDuration: 2000  // 20%概率眩晕2秒
     }
   }
@@ -207,8 +207,8 @@ export const SPECIAL_TOWER_RECIPES: Record<SpecialTowerType, {
     requiredGems: ['diamond', 'topaz'],
     level: 'normal',
     stats: {
-      damage: 20, range: 200, attackSpeed: 600, damageType: 'physical',
-      multiTarget: 3, splashRadius: 80
+      damage: 20, range: 125, attackSpeed: 600, damageType: 'physical',
+      multiTarget: 3, splashRadius: 50
     },
     description: '多目标攻击 + 溅射伤害,强力清场塔'
   },
@@ -218,8 +218,8 @@ export const SPECIAL_TOWER_RECIPES: Record<SpecialTowerType, {
     requiredGems: ['topaz', 'opal'],
     level: 'normal',
     stats: {
-      damage: 18, range: 190, attackSpeed: 900, damageType: 'magic',
-      splashRadius: 90, slowEffect: 0.5
+      damage: 18, range: 120, attackSpeed: 900, damageType: 'magic',
+      splashRadius: 55, slowEffect: 0.5
     },
     description: '溅射伤害 + 减速效果,控制和输出兼备'
   },
@@ -229,7 +229,7 @@ export const SPECIAL_TOWER_RECIPES: Record<SpecialTowerType, {
     requiredGems: ['amethyst', 'ruby'],
     level: 'normal',
     stats: {
-      damage: 50, range: 220, attackSpeed: 800, damageType: 'pure',
+      damage: 50, range: 140, attackSpeed: 800, damageType: 'pure',
       critChance: 0.25, critMultiplier: 3.0
     },
     description: '超高纯粹伤害 + 高暴击,克制高护甲坦克'
@@ -240,7 +240,7 @@ export const SPECIAL_TOWER_RECIPES: Record<SpecialTowerType, {
     requiredGems: ['sapphire', 'opal'],
     level: 'normal',
     stats: {
-      damage: 25, range: 230, attackSpeed: 850, damageType: 'magic',
+      damage: 25, range: 145, attackSpeed: 850, damageType: 'magic',
       pierce: true, slowEffect: 0.4
     },
     description: '魔法穿透 + 减速,远程压制塔'
@@ -251,7 +251,7 @@ export const SPECIAL_TOWER_RECIPES: Record<SpecialTowerType, {
     requiredGems: ['emerald', 'obsidian'],
     level: 'normal',
     stats: {
-      damage: 22, range: 200, attackSpeed: 1000, damageType: 'magic',
+      damage: 22, range: 125, attackSpeed: 1000, damageType: 'magic',
       poisonDamage: 12, poisonDuration: 4000,
       stunChance: 0.15, stunDuration: 1500
     },
@@ -263,7 +263,7 @@ export const SPECIAL_TOWER_RECIPES: Record<SpecialTowerType, {
     requiredGems: ['ruby', 'obsidian'],
     level: 'normal',
     stats: {
-      damage: 40, range: 210, attackSpeed: 900, damageType: 'pure',
+      damage: 40, range: 130, attackSpeed: 900, damageType: 'pure',
       critChance: 0.2, critMultiplier: 2.5,
       stunChance: 0.1, stunDuration: 1000
     },

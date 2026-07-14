@@ -198,12 +198,12 @@ function findPathSegment(
  * 检查在指定位置放置塔是否会堵死路径
  * 
  * 实现原理:
- * 1. 临时将该位置标记为'tower'
+ * 1. 克隆网格并将候选位置标记为'tower'
  * 2. 执行BFS寻路(经过配置的必经点)
  * 3. 如果能找到路径,说明不会堵死
- * 4. 恢复原状并返回结果
+ * 4. 返回验证结果,输入网格保持不变
  * 
- * 注意:此函数会临时修改grid,但会在返回前恢复
+ * 注意:此函数在网格副本上验证,不会修改传入的grid
  * 
  * @param grid - 当前地图网格
  * @param testPosition - 测试放置塔的位置 {row, col}
@@ -224,7 +224,6 @@ export function canPlaceTower(
     return false
   }
   
-  // 保存原始类型,用于后续恢复
   const originalType = grid[row][col].type
   
   // 如果该位置已经有塔或障碍物,不能放置
@@ -232,14 +231,14 @@ export function canPlaceTower(
     return false
   }
   
-  // 临时将该位置标记为塔
-  grid[row][col].type = 'tower'
+  const testGrid = grid.map(gridRow => gridRow.map(cell => ({ ...cell })))
+  testGrid[row][col] = {
+    ...testGrid[row][col],
+    type: 'tower'
+  }
   
   // 尝试寻路,检查是否还能从起点经过必经点到达终点
-  const path = findPath(grid, startPos, endPos)
-  
-  // 恢复原状(重要:必须恢复,否则会影响游戏状态)
-  grid[row][col].type = originalType
+  const path = findPath(testGrid, startPos, endPos)
   
   // 如果能找到路径,则可以放置;否则不能放置
   return path !== null

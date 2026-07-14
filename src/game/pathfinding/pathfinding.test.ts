@@ -28,7 +28,7 @@ describe('pathfinding', () => {
     expect(path).not.toBeNull()
     expect(path?.[0]).toEqual(MAP_CONFIG.startPos)
     expect(path?.at(-1)).toEqual(MAP_CONFIG.endPos)
-    expect(getPathLength(path ?? [])).toBe(57)
+    expect(getPathLength(path ?? [])).toBe(18)
 
     let previousIndex = -1
     for (const waypoint of WAYPOINTS) {
@@ -53,8 +53,8 @@ describe('pathfinding', () => {
 
   it('rejects placement on a required waypoint and restores the grid', () => {
     const grid = initializeGrid()
+    const originalGrid = structuredClone(grid)
     const waypoint = WAYPOINTS[1]
-    const originalType = grid[waypoint.row][waypoint.col].type
 
     expect(canPlaceTower(
       grid,
@@ -62,13 +62,13 @@ describe('pathfinding', () => {
       MAP_CONFIG.startPos,
       MAP_CONFIG.endPos
     )).toBe(false)
-    expect(grid[waypoint.row][waypoint.col].type).toBe(originalType)
+    expect(grid).toEqual(originalGrid)
   })
 
   it('accepts a placement that preserves the route and restores the grid', () => {
     const grid = initializeGrid()
-    const position = { row: 14, col: 0 }
-    const originalType = grid[position.row][position.col].type
+    const position = { row: 9, col: 0 }
+    const originalGrid = structuredClone(grid)
 
     expect(canPlaceTower(
       grid,
@@ -76,7 +76,7 @@ describe('pathfinding', () => {
       MAP_CONFIG.startPos,
       MAP_CONFIG.endPos
     )).toBe(true)
-    expect(grid[position.row][position.col].type).toBe(originalType)
+    expect(grid).toEqual(originalGrid)
   })
 })
 
