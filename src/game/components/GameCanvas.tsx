@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react'
 import { MAP_CONFIG, WAYPOINTS } from '../config/map'
+import { screenPointToGrid } from './canvasPointer'
 
 interface GameCanvasProps {
   width?: number
@@ -125,8 +126,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const dpr = window.devicePixelRatio || 1
       canvasRef.current.width = width * dpr
       canvasRef.current.height = height * dpr
-      canvasRef.current.style.width = `${width}px`
-      canvasRef.current.style.height = `${height}px`
       
       const ctx = canvasRef.current.getContext('2d')
       if (ctx) {
@@ -138,14 +137,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!onClick || !canvasRef.current) return
     
-    const rect = canvasRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    
-    // 转换为格子坐标
-    const { cellSize } = MAP_CONFIG
-    const col = Math.floor(x / cellSize)
-    const row = Math.floor(y / cellSize)
+    const canvas = canvasRef.current
+    const rect = canvas.getBoundingClientRect()
+    const contentRect = {
+      left: rect.left + canvas.clientLeft,
+      top: rect.top + canvas.clientTop,
+      width: canvas.clientWidth,
+      height: canvas.clientHeight
+    }
+    const gridPosition = screenPointToGrid(e.clientX, e.clientY, contentRect, width, height)
+    if (!gridPosition) return
+
+    const { row, col } = gridPosition
     
     // 边界检查
     if (row >= 0 && row < MAP_CONFIG.rows && col >= 0 && col < MAP_CONFIG.cols) {
@@ -161,7 +164,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       style={{
         border: '2px solid #333',
         cursor: 'pointer',
-        display: 'block'
+        display: 'block',
+        width: '100%',
+        maxWidth: `${width}px`,
+        height: 'auto',
+        aspectRatio: `${width} / ${height}`,
+        touchAction: 'manipulation'
       }}
     />
   )

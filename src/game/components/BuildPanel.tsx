@@ -16,8 +16,7 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
   gameStatus
 }) => {
   return (
-    <div style={{
-      width: '200px',
+    <div className="build-panel" style={{
       padding: '15px',
       background: '#F5F5F5',
       borderRadius: '8px',

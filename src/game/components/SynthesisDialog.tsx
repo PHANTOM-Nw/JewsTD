@@ -80,35 +80,9 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
   }
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        background: 'white',
-        borderRadius: '8px',
-        padding: '20px',
-        maxWidth: '600px',
-        maxHeight: '80vh',
-        overflow: 'auto',
-        boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
-      }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px',
-          paddingBottom: '10px',
-          borderBottom: '2px solid #EEE'
-        }}>
+    <div className="synthesis-dialog-backdrop">
+      <div className="synthesis-dialog">
+        <div className="synthesis-dialog__header">
           <h2 style={{ margin: 0, color: '#333' }}>🔧 合成列表</h2>
           <button
             onClick={onClose}
@@ -130,7 +104,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
           <h3 style={{ margin: '0 0 10px 0', color: '#666', fontSize: '16px' }}>
             🔮 特殊塔配方
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+          <div className="synthesis-dialog__special-grid">
             {specialTowers.map(tower => (
               <div
                 key={tower.type}
@@ -228,7 +202,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
               )}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px' }}>
+            <div className="synthesis-dialog__pair-grid">
               {pairs.map(([tower1, tower2]) => {
                 const isSelected = selectedTower1 === tower1.id && selectedTower2 === tower2.id
 

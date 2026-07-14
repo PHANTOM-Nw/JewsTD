@@ -7,6 +7,7 @@ import { SynthesisDialog } from './SynthesisDialog'
 import type { GemType, GemLevel, Tower } from '../types/game'
 import { GEM_COLORS, GEM_NAMES, LEVEL_NAMES } from '../config/towers'
 import { ECONOMY_CONFIG } from '../config/economy'
+import './TowerDefenseGame.css'
 
 export const TowerDefenseGame: React.FC = () => {
   const {
@@ -149,14 +150,8 @@ export const TowerDefenseGame: React.FC = () => {
   }
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      alignItems: 'center',
-      padding: '20px',
-      fontFamily: 'Arial, sans-serif'
-    }}>
-      <h1 style={{ margin: '0 0 20px 0' }}>宝石TD</h1>
+    <div className="game-shell">
+      <h1 className="game-title">宝石TD</h1>
       
       {/* 顶部UI */}
       <GameUI
@@ -170,7 +165,7 @@ export const TowerDefenseGame: React.FC = () => {
       />
       
       {/* 游戏主体区域 */}
-      <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
+      <div className="game-main">
         {/* 左侧建造面板 */}
         <BuildPanel
           wood={uiState.wood}
@@ -180,7 +175,7 @@ export const TowerDefenseGame: React.FC = () => {
         />
         
         {/* 中间Canvas */}
-        <div style={{ position: 'relative' }}>
+        <div className="game-board">
           <GameCanvas 
             onClick={handleCanvasClick} 
             currentPath={gameStateRef.current.currentPath}
@@ -188,18 +183,7 @@ export const TowerDefenseGame: React.FC = () => {
           
           {/* 决策对话框 */}
           {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (
-            <div style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: 'white',
-              padding: '20px',
-              borderRadius: '8px',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-              zIndex: 100,
-              minWidth: '300px'
-            }}>
+            <div className="tower-decision">
               <h3 style={{ margin: '0 0 15px 0', textAlign: 'center', color: '#333' }}>
                 选择要保留的塔
               </h3>

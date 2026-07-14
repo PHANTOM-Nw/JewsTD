@@ -43,18 +43,9 @@ export const GameUI: React.FC<GameUIProps> = ({
   }
   
   return (
-    <div style={{
-      display: 'flex',
-      gap: '30px',
-      padding: '15px 20px',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      borderRadius: '8px',
-      color: 'white',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-      alignItems: 'center'
-    }}>
+    <div className="game-ui">
       {/* 资源显示 */}
-      <div style={{ display: 'flex', gap: '20px' }}>
+      <div className="game-ui__resources">
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '12px', opacity: 0.9 }}>木材</div>
           <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{uiState.wood}</div>
@@ -67,12 +58,7 @@ export const GameUI: React.FC<GameUIProps> = ({
       </div>
       
       {/* ✅ 新增: 游戏等级显示 */}
-      <div style={{
-        background: '#E1BEE7',
-        padding: '8px 15px',
-        borderRadius: '8px',
-        marginRight: '10px'
-      }}>
+      <div className="game-ui__level">
         <div style={{ fontSize: '12px', color: '#666' }}>游戏等级</div>
         <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#9C27B0' }}>
           Lv.{uiState.gameLevel}
@@ -103,10 +89,10 @@ export const GameUI: React.FC<GameUIProps> = ({
       )}
       
       {/* 分隔线 */}
-      <div style={{ width: '2px', height: '40px', background: 'rgba(255,255,255,0.3)' }} />
+      <div className="game-ui__divider" />
       
       {/* 矿坑生命 */}
-      <div style={{ textAlign: 'center' }}>
+      <div className="game-ui__stat">
         <div style={{ fontSize: '12px', opacity: 0.9 }}>矿坑生命</div>
         <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
           {uiState.mineHealth}/{uiState.maxMineHealth}
@@ -114,10 +100,10 @@ export const GameUI: React.FC<GameUIProps> = ({
       </div>
       
       {/* 分隔线 */}
-      <div style={{ width: '2px', height: '40px', background: 'rgba(255,255,255,0.3)' }} />
+      <div className="game-ui__divider" />
       
       {/* 波次 */}
-      <div style={{ textAlign: 'center' }}>
+      <div className="game-ui__stat">
         <div style={{ fontSize: '12px', opacity: 0.9 }}>波次</div>
         <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
           {uiState.wave}/{WAVES.length}
@@ -125,10 +111,10 @@ export const GameUI: React.FC<GameUIProps> = ({
       </div>
       
       {/* 分隔线 */}
-      <div style={{ width: '2px', height: '40px', background: 'rgba(255,255,255,0.3)' }} />
+      <div className="game-ui__divider" />
       
       {/* 控制按钮 */}
-      <div style={{ display: 'flex', gap: '10px' }}>
+      <div className="game-ui__controls">
         {!uiState.canPlaceTowers && uiState.gameStatus === 'playing' && (
           <div style={{
             padding: '10px 20px',
