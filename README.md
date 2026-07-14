@@ -19,8 +19,11 @@ npm run dev
 
 ```bash
 npm run lint
+npm test
 npm run build
 ```
+
+测试使用 Vitest，`npm run test:watch` 可在开发时持续监听。GitHub Actions 会在推送和拉取请求上使用 Node.js 20 执行安装、lint、测试和构建。
 
 ## 目录
 
@@ -44,6 +47,8 @@ docs/
 ├── product/               # 当前玩法和原作调研
 ├── reference/             # 配置、算法参考
 └── records/               # 变更记录与历史生成报告
+
+.github/workflows/         # GitHub Actions 自动化验证
 ```
 
 ## 文档入口

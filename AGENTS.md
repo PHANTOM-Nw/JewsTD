@@ -24,6 +24,15 @@
 
 - TypeScript 使用 2 空格、单引号、无分号；类型使用 `import type`。
 - 不通过禁用 lint 规则绕过 Hook 依赖和类型问题。
-- 每次代码变更至少运行 `npm run lint` 和 `npm run build`。
+- 每次代码变更至少运行 `npm run lint`、`npm test` 和 `npm run build`。
 - 玩法、公共接口或目录变化必须同步当前文档；一次性记录放 `docs/records/YYYY-MM-DD-topic.md`。
 - `docs/records/archive/` 是历史材料，除添加归档说明外不要把它当作当前规范维护。
+
+## 测试约定
+
+- 单元测试使用 Vitest，测试文件与被测模块同目录，命名为 `*.test.ts` 或 `*.test.tsx`。
+- 修改寻路、碰撞、合成、资源结算、波次状态或其他玩法规则时，必须新增或更新对应测试。
+- 修复缺陷时优先添加能够复现问题的回归测试。
+- 测试必须可重复；随机数、计时器、`requestAnimationFrame`、音频和浏览器 API 应固定或模拟。
+- 优先断言输入输出和状态变化，避免依赖内部实现细节；快照不能替代关键行为断言。
+- `src/devtools/` 中的手工检查不能替代自动化测试。
