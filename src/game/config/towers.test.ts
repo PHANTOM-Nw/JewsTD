@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  BASE_TOWER_STATS,
   calculateUpgradeCost,
   canCraftSpecialTower,
+  findSynthesizableTowerPairs,
   getTowerLevelProbabilities,
-  randomizeTowerLevel
+  randomizeTowerLevel,
+  SPECIAL_TOWER_RECIPES
 } from './towers'
 
 describe('special tower crafting', () => {
@@ -26,6 +29,67 @@ describe('special tower crafting', () => {
       { specialType: 'silver' },
       { gemType: 'topaz' }
     ], 'silver')).toBe(false)
+  })
+
+  it('uses the configured materials for every special tower recipe', () => {
+    const specialTypes = Object.keys(SPECIAL_TOWER_RECIPES) as Array<keyof typeof SPECIAL_TOWER_RECIPES>
+
+    expect(specialTypes).toHaveLength(6)
+
+    specialTypes.forEach(specialType => {
+      const [firstGem, secondGem] = SPECIAL_TOWER_RECIPES[specialType].requiredGems
+
+      expect(canCraftSpecialTower([
+        { gemType: secondGem },
+        { gemType: firstGem }
+      ], specialType)).toBe(true)
+    })
+  })
+})
+
+describe('regular tower synthesis pairs', () => {
+  it('finds pairs for every configured base gem at each upgradeable level', () => {
+    const gemTypes = Object.keys(BASE_TOWER_STATS) as Array<keyof typeof BASE_TOWER_STATS>
+    const levels = ['chipped', 'flawed', 'normal'] as const
+    const storedTowers = gemTypes.flatMap(gemType => levels.flatMap(level => [
+      { id: `${gemType}-${level}-1`, gemType, level },
+      { id: `${gemType}-${level}-2`, gemType, level }
+    ]))
+
+    const pairs = findSynthesizableTowerPairs(storedTowers)
+
+    expect(pairs).toHaveLength(gemTypes.length * levels.length)
+    expect(pairs.map(([firstTower]) => `${firstTower.gemType}:${firstTower.level}`)).toEqual(
+      gemTypes.flatMap(gemType => levels.map(level => `${gemType}:${level}`))
+    )
+  })
+
+  it('excludes flawless, special, mismatched and single towers', () => {
+    const storedTowers = [
+      { id: 'flawless-1', gemType: 'ruby', level: 'flawless' },
+      { id: 'flawless-2', gemType: 'ruby', level: 'flawless' },
+      { id: 'special-1', specialType: 'silver', level: 'normal' },
+      { id: 'special-2', specialType: 'silver', level: 'normal' },
+      { id: 'single', gemType: 'emerald', level: 'normal' },
+      { id: 'mismatch-1', gemType: 'diamond', level: 'chipped' },
+      { id: 'mismatch-2', gemType: 'diamond', level: 'flawed' }
+    ] as const
+
+    expect(findSynthesizableTowerPairs(storedTowers)).toEqual([])
+  })
+
+  it('returns each unique combination when more than two matching towers exist', () => {
+    const storedTowers = [
+      { id: '1', gemType: 'sapphire', level: 'normal' },
+      { id: '2', gemType: 'sapphire', level: 'normal' },
+      { id: '3', gemType: 'sapphire', level: 'normal' }
+    ] as const
+
+    expect(findSynthesizableTowerPairs(storedTowers).map(pair => pair.map(tower => tower.id))).toEqual([
+      ['1', '2'],
+      ['1', '3'],
+      ['2', '3']
+    ])
   })
 })
 

@@ -106,7 +106,8 @@ export const WAVES: WaveConfig[] = [
     enemies: [
       { type: 'basic', count: 25, interval: 600 },
       { type: 'fast', count: 20, interval: 500 },
-      { type: 'tank', count: 12, interval: 1200 }
+      { type: 'tank', count: 12, interval: 1200 },
+      { type: 'boss', count: 1, interval: 1000 }
     ],
     isBossWave: true,
     healthMultiplier: 8.5  // 850%血量 - 最终Boss波

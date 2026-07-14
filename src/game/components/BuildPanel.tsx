@@ -1,15 +1,19 @@
 import React from 'react'
+import { ECONOMY_CONFIG } from '../config/economy'
+import type { GameStatus } from '../types/game'
 
 interface BuildPanelProps {
   wood: number
+  gold: number
   placedCount: number
-  canPlaceTowers: boolean
+  gameStatus: GameStatus
 }
 
 export const BuildPanel: React.FC<BuildPanelProps> = ({
   wood,
+  gold,
   placedCount,
-  canPlaceTowers
+  gameStatus
 }) => {
   return (
     <div style={{
@@ -31,9 +35,21 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
         color: '#666',
         lineHeight: '1.6'
       }}>
-        {!canPlaceTowers ? (
+        {gameStatus === 'playing' || gameStatus === 'paused' ? (
           <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#FF5722' }}>
-            🎮 波次进行中，不能放置塔
+            🎮 波次{gameStatus === 'paused' ? '已暂停' : '进行中'}，不能放置塔
+          </p>
+        ) : gameStatus === 'deciding' ? (
+          <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#7B1FA2' }}>
+            请从本轮5座塔中选择1座保留
+          </p>
+        ) : gameStatus === 'ready' ? (
+          <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#2E7D32' }}>
+            本轮已完成，可合成、清除障碍或开始波次
+          </p>
+        ) : gameStatus === 'game_over' || gameStatus === 'victory' ? (
+          <p style={{ margin: '0', textAlign: 'center', fontWeight: 'bold', color: '#666' }}>
+            本局已结束
           </p>
         ) : (
           <>
@@ -45,8 +61,9 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
               <li>每次随机生成1个宝石</li>
               <li>共放置5次(消耗5木材)</li>
               <li>选择1个保留,其余变障碍</li>
-              <li style={{ color: '#FF6B6B', fontWeight: 'bold' }}>✨ 点击障碍物消耗1木材删除</li>
-              <li style={{ color: '#4CAF50', fontWeight: 'bold' }}>✨ 可直接在障碍物上建新塔</li>
+              <li style={{ color: '#FF6B6B', fontWeight: 'bold' }}>
+                ✨ 点击障碍物消耗{ECONOMY_CONFIG.obstacleRemovalGoldCost}金币删除
+              </li>
               <li style={{ color: '#FFA726', fontWeight: 'bold' }}>✨ 合成后材料变障碍物</li>
             </ol>
           </>
@@ -65,6 +82,21 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
         </div>
         <div style={{ fontSize: '12px', color: '#666' }}>剩余木材</div>
       </div>
+
+      <div style={{
+        marginTop: '10px',
+        padding: '10px',
+        background: gold >= ECONOMY_CONFIG.obstacleRemovalGoldCost ? '#FFF8E1' : '#F5F5F5',
+        borderRadius: '4px',
+        textAlign: 'center'
+      }}>
+        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#F57F17' }}>
+          {gold}
+        </div>
+        <div style={{ fontSize: '12px', color: '#666' }}>
+          清除障碍需 {ECONOMY_CONFIG.obstacleRemovalGoldCost} 金币
+        </div>
+      </div>
       
       {placedCount > 0 && (
         <div style={{
@@ -75,7 +107,7 @@ export const BuildPanel: React.FC<BuildPanelProps> = ({
           textAlign: 'center'
         }}>
           <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1976D2' }}>
-            {placedCount}/5
+            {placedCount}/{ECONOMY_CONFIG.towersPerRound}
           </div>
           <div style={{ fontSize: '12px', color: '#666' }}>已放置</div>
         </div>

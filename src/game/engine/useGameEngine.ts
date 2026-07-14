@@ -1,12 +1,74 @@
 import { useState, useRef, useCallback } from 'react'
 import { useGameLoop } from './useGameLoop'
 import { usePathfinding } from '../pathfinding/usePathfinding'
-import type { Enemy, Tower, Bullet, GridCell, GemType, GemLevel, SpecialTowerType } from '../types/game'
+import type {
+  Enemy,
+  Tower,
+  Bullet,
+  GridCell,
+  GemType,
+  GemLevel,
+  SpecialTowerType,
+  EnemyType,
+  UIState
+} from '../types/game'
 import { getTowerStats, SPECIAL_TOWER_RECIPES, GEM_COLORS, SPECIAL_TOWER_COLORS, LEVEL_ICONS, randomizeTowerLevel, calculateUpgradeCost, getTowerLevelProbabilities } from '../config/towers'
 import { ENEMY_TYPES, createEnemy } from '../config/enemies'
 import { WAVES } from '../config/waves'
 import { MAP_CONFIG, initializeGrid, gridToPixel, WAYPOINTS } from '../config/map'
+import { ECONOMY_CONFIG } from '../config/economy'
 import { soundManager, type SoundType } from '../services/audio'
+import {
+  canFinalizeTowerBatch,
+  canStartConfiguredWave,
+  getStateAfterMineDamage,
+  getStatusAfterPlacement,
+  getStatusAfterWave
+} from './gameFlow'
+import {
+  PIERCE_DAMAGE_MULTIPLIER,
+  advancePoisonEffects,
+  advanceTimedEffects,
+  applyEnemyDamage,
+  calculateDamage,
+  selectPierceTarget,
+  selectTowerTargets
+} from './combat'
+
+interface EngineUiState extends UIState {
+  selectedGem: GemType | null
+  availableGems: GemType[]
+}
+
+interface EngineState {
+  enemies: Enemy[]
+  towers: Tower[]
+  bullets: Bullet[]
+  grid: GridCell[][]
+  storedTowers: Tower[]
+  currentPath: { row: number; col: number }[] | null
+  waveInProgress: boolean
+  spawnQueue: Array<{ type: EnemyType; delay: number }>
+  waveElapsedTime: number
+  gameTime: number
+  currentBatchTowerIds: string[]
+  currentHealthMultiplier: number
+}
+
+function createInitialUiState(): EngineUiState {
+  return {
+    wood: ECONOMY_CONFIG.startingWood,
+    gold: ECONOMY_CONFIG.startingGold,
+    mineHealth: ECONOMY_CONFIG.startingMineHealth,
+    maxMineHealth: ECONOMY_CONFIG.startingMineHealth,
+    wave: 0,
+    gameStatus: 'building',
+    selectedGem: null,
+    availableGems: [],
+    canPlaceTowers: true,
+    gameLevel: 1
+  }
+}
 
 /**
  * 游戏引擎核心Hook
@@ -30,7 +92,7 @@ import { soundManager, type SoundType } from '../services/audio'
  *   decideBecomeObstacle,
  *   synthesizeTowers,
  *   startWave,
- *   start, stop, pause, resume
+ *   pause, resume, resetGame
  * } = useGameEngine()
  * ```
  */
@@ -39,39 +101,27 @@ export function useGameEngine() {
   const { calculatePath, validatePlacement } = usePathfinding()
   
   // ==================== UI状态(触发重渲染) ====================
-  const [uiState, setUiState] = useState({
-    wood: 5,              // 木材(每波固定5个)
-    gold: 50,             // 金币
-    mineHealth: 15,       // 矿坑生命
-    maxMineHealth: 15,    // 最大矿坑生命
-    wave: 0,              // 当前波次
-    gameStatus: 'preparing' as 'preparing' | 'playing' | 'paused' | 'game_over' | 'victory',
-    selectedGem: null as GemType | null,  // 当前选中的宝石类型
-    availableGems: [] as GemType[],  // 当前波可用的5个随机宝石
-    canPlaceTowers: true as boolean,  // 是否可以放置塔
-    gameLevel: 1  // ✅ 新增: 初始游戏等级为1
-  })
+  const [uiState, setUiState] = useState<EngineUiState>(createInitialUiState)
   
   // ==================== 游戏对象状态(不触发重渲染,高频更新) ====================
-  const gameStateRef = useRef({
-    enemies: [] as Enemy[],
-    towers: [] as Tower[],
-    bullets: [] as Bullet[],
-    grid: initializeGrid(),
-    storedTowers: [] as Tower[],  // 存储的塔(跨波次保留)
-    currentPath: null as { row: number; col: number }[] | null,
-    waveInProgress: false,
-    waveCompleted: false,  // 当前波次是否完成
-    spawnQueue: [] as Array<{ type: 'basic' | 'fast' | 'tank'; delay: number }>,
-    waveStartTime: 0 as number,  // 波次开始时间
-    currentBatchTowerIds: [] as string[],  // 当前批次放置的塔ID列表
-    currentHealthMultiplier: 1.0 as number  // 当前波次的血量倍率
-  })
-  
-  // 计算初始路径
-  const initialPath = calculatePath(gameStateRef.current.grid)
-  gameStateRef.current.currentPath = initialPath
-  console.log('✅ 初始路径已计算:', initialPath ? `长度${initialPath.length}` : '无路径')
+  const gameStateRef = useRef<EngineState>(null!)
+  if (!gameStateRef.current) {
+    const grid = initializeGrid()
+    gameStateRef.current = {
+      enemies: [],
+      towers: [],
+      bullets: [],
+      grid,
+      storedTowers: [],
+      currentPath: calculatePath(grid),
+      waveInProgress: false,
+      spawnQueue: [],
+      waveElapsedTime: 0,
+      gameTime: 0,
+      currentBatchTowerIds: [],
+      currentHealthMultiplier: 1
+    }
+  }
   
   // ==================== 核心方法 ====================
   
@@ -95,20 +145,27 @@ export function useGameEngine() {
    * @returns 新创建的塔,如果放置失败则返回undefined
    */
   const placeTower = useCallback((gridPos: { row: number; col: number }) => {
-    if (!uiState.canPlaceTowers) {
+    if (uiState.gameStatus !== 'building' || !uiState.canPlaceTowers) {
       console.warn('当前不能放置塔')
       return null
     }
     
-    if (uiState.wood <= 0) {
+    if (uiState.wood < ECONOMY_CONFIG.towerWoodCost) {
       alert('木材已用完!')
+      return null
+    }
+
+    if (gameStateRef.current.currentBatchTowerIds.length >= ECONOMY_CONFIG.towersPerRound) {
       return null
     }
     
     const { grid } = gameStateRef.current
+
+    if (!grid[gridPos.row]?.[gridPos.col]) {
+      return null
+    }
     
-    // ✅ 修改: 允许在empty或obstacle上放置塔
-    if (grid[gridPos.row][gridPos.col].type !== 'empty' && grid[gridPos.row][gridPos.col].type !== 'obstacle') {
+    if (grid[gridPos.row][gridPos.col].type !== 'empty') {
       console.warn('该位置已有建筑,无法放置')
       return null
     }
@@ -154,15 +211,19 @@ export function useGameEngine() {
       pierce: stats.pierce
     }
     
-    // 扣除木材
-    setUiState(prev => ({ ...prev, wood: prev.wood - 1 }))
-    
     // 添加到地图(标记为临时塔)
     gameStateRef.current.towers.push(newTower)
     
-    // ✅ 添加到当前批次列表
     gameStateRef.current.currentBatchTowerIds.push(newTower.id)
-    console.log(`✅ 放置${randomGemType}塔(${randomLevel})在(${gridPos.row},${gridPos.col}),原类型:${grid[gridPos.row][gridPos.col].type},剩余木材:${uiState.wood - 1}`)
+    const nextBuildState = getStatusAfterPlacement(
+      gameStateRef.current.currentBatchTowerIds.length,
+      ECONOMY_CONFIG.towersPerRound
+    )
+    setUiState(prev => ({
+      ...prev,
+      wood: prev.wood - ECONOMY_CONFIG.towerWoodCost,
+      ...nextBuildState
+    }))
     
     // ✅ 修改: 更新格子类型为tower(无论是从empty还是obstacle)
     grid[gridPos.row][gridPos.col] = {
@@ -176,11 +237,14 @@ export function useGameEngine() {
     gameStateRef.current.currentPath = newPath
     
     return newTower
-  }, [uiState.canPlaceTowers, uiState.wood, validatePlacement, calculatePath, uiState.gameLevel])
+  }, [uiState.canPlaceTowers, uiState.gameStatus, uiState.wood, validatePlacement, calculatePath, uiState.gameLevel])
 
-  /** 删除一个障碍物并消耗1木材。 */
+  /** 删除一个障碍物并消耗金币，不占用本轮的5次建造。 */
   const removeObstacle = useCallback((gridPos: { row: number; col: number }) => {
-    if (uiState.wood <= 0) {
+    if (
+      (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') ||
+      uiState.gold < ECONOMY_CONFIG.obstacleRemovalGoldCost
+    ) {
       return false
     }
 
@@ -190,11 +254,18 @@ export function useGameEngine() {
       return false
     }
 
-    grid[gridPos.row][gridPos.col] = { ...cell, type: 'empty' }
+    grid[gridPos.row][gridPos.col] = {
+      ...cell,
+      type: 'empty',
+      towerId: undefined
+    }
     gameStateRef.current.currentPath = calculatePath(grid)
-    setUiState(prev => ({ ...prev, wood: prev.wood - 1 }))
+    setUiState(prev => ({
+      ...prev,
+      gold: prev.gold - ECONOMY_CONFIG.obstacleRemovalGoldCost
+    }))
     return true
-  }, [calculatePath, uiState.wood])
+  }, [calculatePath, uiState.gameStatus, uiState.gold])
   
   /**
    * 批量决定5个塔的处理方式
@@ -207,6 +278,17 @@ export function useGameEngine() {
    */
   const finalizeTowers = useCallback((keepTowerId: string) => {
     const { towers, storedTowers, grid, currentBatchTowerIds } = gameStateRef.current
+
+    if (
+      uiState.gameStatus !== 'deciding' ||
+      !canFinalizeTowerBatch(
+        currentBatchTowerIds,
+        keepTowerId,
+        ECONOMY_CONFIG.towersPerRound
+      )
+    ) {
+      return false
+    }
     
     console.log('开始处理塔的决策,保留:', keepTowerId)
     console.log('当前批次塔IDs:', currentBatchTowerIds)
@@ -222,7 +304,7 @@ export function useGameEngine() {
       if (tower.id === keepTowerId) {
         // ✅ 保留这个塔: 留在地图上,同时添加到存储区
         console.log(`保留塔: ${tower.gemType} 在位置 (${tower.gridPosition.row}, ${tower.gridPosition.col})`)
-        
+
         // 创建副本添加到存储区(用于合成)
         const towerCopy = { ...tower }
         storedTowers.push(towerCopy)
@@ -242,7 +324,8 @@ export function useGameEngine() {
         const { gridPosition } = tower
         grid[gridPosition.row][gridPosition.col] = {
           ...grid[gridPosition.row][gridPosition.col],
-          type: 'obstacle'  // 变成永久障碍物
+          type: 'obstacle',  // 变成永久障碍物
+          towerId: undefined
         }
       }
     })
@@ -253,9 +336,16 @@ export function useGameEngine() {
     // 重新计算路径(因为障碍物变化了)
     const newPath = calculatePath(grid)
     gameStateRef.current.currentPath = newPath
+
+    setUiState(prev => ({
+      ...prev,
+      gameStatus: 'ready',
+      canPlaceTowers: false
+    }))
     
     console.log('最终塔数量:', towers.length, '存储区数量:', storedTowers.length)
-  }, [calculatePath])
+    return true
+  }, [calculatePath, uiState.gameStatus])
   
   /**
    * 合成两个相同类型和等级的塔
@@ -270,6 +360,14 @@ export function useGameEngine() {
    * @param towerId2 - 第二个塔的ID
    */
   const synthesizeTowers = useCallback((towerId1: string, towerId2: string) => {
+    if (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') {
+      return false
+    }
+
+    if (towerId1 === towerId2) {
+      return false
+    }
+
     const { towers, storedTowers, grid } = gameStateRef.current
     
     // 从存储区找到两个塔
@@ -278,7 +376,7 @@ export function useGameEngine() {
     
     if (tower1Index === -1 || tower2Index === -1) {
       console.warn('找不到要合成的塔')
-      return
+      return false
     }
     
     const tower1 = storedTowers[tower1Index]
@@ -287,7 +385,7 @@ export function useGameEngine() {
     // 验证是否可以合成
     if (tower1.gemType !== tower2.gemType || tower1.level !== tower2.level) {
       alert('只能合成相同类型和等级的塔!')
-      return
+      return false
     }
     
     // 检查是否是最高等级
@@ -296,7 +394,7 @@ export function useGameEngine() {
     
     if (currentIndex >= levels.length - 1) {
       alert('已经是最高等级了!')
-      return
+      return false
     }
     
     const newLevel = levels[currentIndex + 1]
@@ -346,16 +444,18 @@ export function useGameEngine() {
     console.log(`✅ 合成材料变为障碍物: (${tower2GridPos.row},${tower2GridPos.col})`)
     
     // 从存储区移除两个旧塔,添加升级后的塔
-    storedTowers.splice(tower2Index, 1)  // 先删除索引大的
-    storedTowers.splice(tower1Index, 1)  // 再删除索引小的
-    storedTowers.push(upgradedTower)
+    gameStateRef.current.storedTowers = storedTowers.filter(
+      tower => tower.id !== towerId1 && tower.id !== towerId2
+    )
+    gameStateRef.current.storedTowers.push(upgradedTower)
     
     // 重新计算路径(因为障碍物变化了)
     const newPath = calculatePath(grid)
     gameStateRef.current.currentPath = newPath
     
     console.log(`合成成功: ${tower1.gemType} ${tower1.level} x2 → ${upgradedTower.gemType} ${newLevel}`)
-  }, [calculatePath])
+    return true
+  }, [calculatePath, uiState.gameStatus])
   
   /**
    * 合成特殊塔
@@ -371,6 +471,10 @@ export function useGameEngine() {
    * @param specialType - 特殊塔类型
    */
   const synthesizeSpecialTower = useCallback((specialType: SpecialTowerType) => {
+    if (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') {
+      return false
+    }
+
     const { towers, storedTowers, grid } = gameStateRef.current
     
     console.log(`开始合成特殊塔: ${specialType}`)
@@ -378,7 +482,7 @@ export function useGameEngine() {
     const recipe = SPECIAL_TOWER_RECIPES[specialType]
     if (!recipe) {
       console.error('未知的特殊塔类型:', specialType)
-      return
+      return false
     }
     
     // 找到需要的材料塔
@@ -389,7 +493,7 @@ export function useGameEngine() {
       const tower = storedTowers.find(t => t.gemType === gemType && !selectedTowers.includes(t))
       if (!tower) {
         alert(`缺少${gemType}!`)
-        return
+        return false
       }
       selectedTowers.push(tower)
     }
@@ -400,7 +504,7 @@ export function useGameEngine() {
     const firstTower = selectedTowers[0]
     const newTower: Tower = {
       ...firstTower,
-      id: `tower_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: firstTower.id,
       gemType: undefined,  // 清除基础宝石类型
       specialType: specialType,  // 设置特殊塔类型
       level: recipe.level,
@@ -478,7 +582,8 @@ export function useGameEngine() {
       onyx: '玛瑙'
     }
     alert(`成功合成${specialNameMap[specialType]}!`)
-  }, [calculatePath])
+    return true
+  }, [calculatePath, uiState.gameStatus])
   
   /**
    * ✅ 新增: 升级游戏等级
@@ -528,10 +633,14 @@ export function useGameEngine() {
    */
   const startWave = useCallback(() => {
     const { wave } = uiState
-    
-    if (wave >= WAVES.length) {
-      setUiState(prev => ({ ...prev, gameStatus: 'victory' }))
-      return
+
+    if (!canStartConfiguredWave(
+      uiState.gameStatus,
+      wave,
+      WAVES.length,
+      Boolean(gameStateRef.current.currentPath)
+    )) {
+      return false
     }
     
     const waveConfig = WAVES[wave]
@@ -544,7 +653,7 @@ export function useGameEngine() {
     gameStateRef.current.currentHealthMultiplier = healthMultiplier
     
     // 生成敌人生成队列
-    const spawnQueue: Array<{ type: 'basic' | 'fast' | 'tank'; delay: number }> = []
+    const spawnQueue: Array<{ type: EnemyType; delay: number }> = []
     let currentTime = 0
     
     waveConfig.enemies.forEach(enemyConfig => {
@@ -562,13 +671,8 @@ export function useGameEngine() {
     console.log('生成队列:', spawnQueue) // 调试日志
     
     gameStateRef.current.spawnQueue = spawnQueue
-    gameStateRef.current.waveStartTime = Date.now()  // 初始化波次开始时间
+    gameStateRef.current.waveElapsedTime = 0
     gameStateRef.current.waveInProgress = true
-    gameStateRef.current.waveCompleted = false
-    
-    // ✅ 重置当前批次列表
-    gameStateRef.current.currentBatchTowerIds = []
-    console.log('波次开始,重置当前批次塔列表')
     
     // 锁定放置阶段,波次中不能放置塔
     setUiState(prev => ({
@@ -580,7 +684,8 @@ export function useGameEngine() {
       availableGems: [],
       selectedGem: null
     }))
-  }, [uiState.wave])
+    return true
+  }, [uiState.gameStatus, uiState.wave])
   
   // ==================== Update函数 ====================
   
@@ -607,52 +712,27 @@ export function useGameEngine() {
       
       // ========== 更新毒素效果 ==========
       if (enemy.poisonEffects && enemy.poisonEffects.length > 0) {
-        const currentTime = Date.now()
-        
-        enemy.poisonEffects = enemy.poisonEffects.filter(effect => {
-          const elapsed = currentTime - effect.startTime
-          
-          if (elapsed >= effect.duration) {
-            return false  // 毒素效果结束
-          }
-          
-          // 每1秒造成一次伤害
-          if (elapsed % 1000 < deltaTime) {
-            enemy.health -= effect.damage
-            console.log(`☠️ 毒素伤害: ${effect.damage}`)
-            
-            if (enemy.health <= 0 && !enemy.isDead) {
-              enemy.isDead = true
-              setUiState(prev => ({ ...prev, gold: prev.gold + enemy.reward }))
-            }
-          }
-          
-          return true
-        })
-      }
-      
-      // ========== 更新眩晕状态 ==========
-      if (enemy.isStunned && enemy.stunEndTime) {
-        if (Date.now() >= enemy.stunEndTime) {
-          enemy.isStunned = false
-          enemy.stunEndTime = undefined
-          console.log('眩晕结束')
+        const poisonUpdate = advancePoisonEffects(enemy.poisonEffects, deltaTime)
+        enemy.poisonEffects = poisonUpdate.effects
+
+        if (
+          poisonUpdate.damage > 0 &&
+          applyEnemyDamage(enemy, poisonUpdate.damage)
+        ) {
+          setUiState(prev => ({ ...prev, gold: prev.gold + enemy.reward }))
         }
       }
+
+      if (enemy.isDead) return
       
-      // 减速效果处理
-      let currentSpeed = enemy.speed
-      if (enemy.slowTimer && enemy.slowTimer > 0) {
-        enemy.slowTimer -= deltaTime
-        currentSpeed *= 0.5 // 减速50%
-      } else if (enemy.slowTimer && enemy.slowTimer <= 0) {
-        enemy.slowTimer = undefined
-      }
+      // ========== 更新眩晕和减速状态 ==========
+      const timedEffectUpdate = advanceTimedEffects(enemy, deltaTime)
+      enemy.isStunned = timedEffectUpdate.isStunned
+      enemy.stunTimer = timedEffectUpdate.stunTimer
+      enemy.slowTimer = timedEffectUpdate.slowTimer
+      enemy.slowEffect = timedEffectUpdate.slowEffect
       
-      // 如果被眩晕则不移动
-      if (enemy.isStunned) {
-        return
-      }
+      if (timedEffectUpdate.travelDistance <= 0) return
       
       if (enemy.pathIndex >= currentPath.length - 1) {
         // 到达终点
@@ -660,11 +740,12 @@ export function useGameEngine() {
         
         // 扣除矿坑生命
         setUiState(prev => {
-          const newHealth = prev.mineHealth - 1
-          if (newHealth <= 0) {
-            return { ...prev, mineHealth: 0, gameStatus: 'game_over' }
-          }
-          return { ...prev, mineHealth: newHealth }
+          const mineResult = getStateAfterMineDamage(
+            prev.mineHealth,
+            enemy.mineDamage,
+            prev.gameStatus
+          )
+          return { ...prev, ...mineResult }
         })
         
         return
@@ -680,8 +761,7 @@ export function useGameEngine() {
       const dy = nextPixel.y - currentPixel.y
       const distance = Math.sqrt(dx * dx + dy * dy)
       
-      const moveDistance = currentSpeed * (deltaTime / 1000)
-      enemy.progress += moveDistance / distance
+      enemy.progress += timedEffectUpdate.travelDistance / distance
       
       if (enemy.progress >= 1) {
         enemy.pathIndex++
@@ -709,13 +789,14 @@ export function useGameEngine() {
    * 
    * @param deltaTime - 距离上一帧的时间间隔(ms)
    */
-  const spawnEnemies = useCallback(() => {
-    const { spawnQueue, waveStartTime, currentHealthMultiplier } = gameStateRef.current
+  const spawnEnemies = useCallback((deltaTime: number) => {
+    const { spawnQueue, currentHealthMultiplier } = gameStateRef.current
     
     if (!gameStateRef.current.waveInProgress) return
     if (spawnQueue.length === 0) return
     
-    const elapsedTime = Date.now() - waveStartTime!
+    gameStateRef.current.waveElapsedTime += deltaTime
+    const elapsedTime = gameStateRef.current.waveElapsedTime
     
     // 生成敌人
     while (spawnQueue.length > 0 && spawnQueue[0].delay <= elapsedTime) {
@@ -753,57 +834,36 @@ export function useGameEngine() {
    */
   const processTowerAttacks = useCallback(() => {
     const { towers, enemies } = gameStateRef.current
-    const now = Date.now()
+    const now = gameStateRef.current.gameTime
     
     towers.forEach(tower => {
-      // 查找范围内的敌人
-      const enemiesInRange = enemies.filter(enemy => {
-        const dx = enemy.position.x - tower.position.x
-        const dy = enemy.position.y - tower.position.y
-        const distance = Math.sqrt(dx * dx + dy * dy)
-        return distance <= tower.range
-      })
-      
-      if (enemiesInRange.length === 0) return
-      
-      // 选择最近的敌人
-      const target = enemiesInRange.reduce((closest, enemy) => {
-        const distToTower = Math.sqrt(
-          Math.pow(enemy.position.x - tower.position.x, 2) +
-          Math.pow(enemy.position.y - tower.position.y, 2)
-        )
-        const distToClosest = Math.sqrt(
-          Math.pow(closest.position.x - tower.position.x, 2) +
-          Math.pow(closest.position.y - tower.position.y, 2)
-        )
-        return distToTower < distToClosest ? enemy : closest
-      })
+      const targets = selectTowerTargets(tower, enemies)
+      if (targets.length === 0) return
       
       // 检查冷却时间
       if (now - tower.lastAttackTime >= tower.attackSpeed) {
-        // 创建子弹(包含所有特效属性)
-        const bullet: Bullet = {
-          id: `bullet_${Date.now()}_${Math.random()}`,
-          position: { ...tower.position },
-          targetId: target.id,
-          damage: tower.damage,
-          damageType: tower.damageType,
-          speed: 300,
-          splashRadius: tower.splashRadius,
-          slowEffect: tower.slowEffect,
-          critChance: tower.critChance,
-          critMultiplier: tower.critMultiplier,
-          poisonDamage: tower.poisonDamage,
-          poisonDuration: tower.poisonDuration,
-          stunChance: tower.stunChance,
-          stunDuration: tower.stunDuration,
-          pierce: tower.pierce
-        }
-        
-        gameStateRef.current.bullets.push(bullet)
+        targets.forEach(target => {
+          const bullet: Bullet = {
+            id: `bullet_${Date.now()}_${Math.random()}`,
+            position: { ...tower.position },
+            targetId: target.id,
+            damage: tower.damage,
+            damageType: tower.damageType,
+            speed: 300,
+            splashRadius: tower.splashRadius,
+            slowEffect: tower.slowEffect,
+            critChance: tower.critChance,
+            critMultiplier: tower.critMultiplier,
+            poisonDamage: tower.poisonDamage,
+            poisonDuration: tower.poisonDuration,
+            stunChance: tower.stunChance,
+            stunDuration: tower.stunDuration,
+            pierce: tower.pierce
+          }
+
+          gameStateRef.current.bullets.push(bullet)
+        })
         tower.lastAttackTime = now
-        
-        console.log(`塔攻击: ${tower.gemType || tower.specialType}, 目标: ${target.type}, 伤害: ${tower.damage}`)
         
         // 🎵 播放攻击音效
         const soundType: SoundType = tower.specialType || (tower.gemType as SoundType)
@@ -831,25 +891,32 @@ export function useGameEngine() {
    * @param bullet - 子弹
    */
   const applyDamage = useCallback((enemy: Enemy, bullet: Bullet) => {
-    let actualDamage = bullet.damage
-    
-    // ========== 暴击判定 ==========
-    if (bullet.critChance && Math.random() < bullet.critChance) {
-      actualDamage *= bullet.critMultiplier || 2.0
-      console.log('💥 暴击!', actualDamage.toFixed(1))
+    const damageTarget = (target: Enemy, damage: number) => {
+      if (applyEnemyDamage(target, damage)) {
+        setUiState(prev => ({ ...prev, gold: prev.gold + target.reward }))
+      }
     }
-    
-    // ========== 伤害类型计算 ==========
-    if (bullet.damageType === 'physical') {
-      actualDamage = bullet.damage * (1 - enemy.armor / (enemy.armor + 10))
-    } else if (bullet.damageType === 'magic') {
-      actualDamage = bullet.damage * (1 - enemy.magicResist)
+
+    const damageResult = calculateDamage(
+      bullet.damage,
+      bullet.damageType,
+      enemy,
+      bullet.critChance,
+      bullet.critMultiplier
+    )
+    damageTarget(enemy, damageResult.damage)
+
+    const damageSecondaryTarget = (target: Enemy, multiplier: number) => {
+      const result = calculateDamage(
+        bullet.damage * multiplier,
+        bullet.damageType,
+        target,
+        0,
+        1,
+        1
+      )
+      damageTarget(target, result.damage)
     }
-    // 纯粹伤害无视减免
-    
-    enemy.health -= actualDamage
-    
-    console.log(`造成伤害: ${actualDamage.toFixed(1)}, 剩余生命: ${enemy.health.toFixed(1)}`)
     
     // ========== 溅射效果 ==========
     if (bullet.splashRadius !== undefined) {
@@ -863,53 +930,54 @@ export function useGameEngine() {
         const distance = Math.sqrt(dx * dx + dy * dy)
         
         if (distance <= splashRadius) {
-          const splashDamage = actualDamage * 0.5
-          otherEnemy.health -= splashDamage
-          
-          if (otherEnemy.health <= 0 && !otherEnemy.isDead) {
-            otherEnemy.isDead = true
-            setUiState(prev => ({ ...prev, gold: prev.gold + otherEnemy.reward }))
-          }
+          damageSecondaryTarget(otherEnemy, 0.5)
         }
       })
     }
-    
-    // ========== 减速效果 ==========
-    if (bullet.slowEffect) {
-      enemy.slowTimer = 3000 // 减速3秒
-      console.log(`敌人被减速${bullet.slowEffect * 100}%`)
+
+    // ========== 穿透效果 ==========
+    if (bullet.pierce) {
+      const nextTarget = selectPierceTarget(
+        enemy,
+        gameStateRef.current.enemies
+      )
+
+      if (nextTarget) {
+        damageSecondaryTarget(nextTarget, PIERCE_DAMAGE_MULTIPLIER)
+      }
     }
-    
-    // ========== 毒素效果 ==========
-    if (bullet.poisonDamage && bullet.poisonDuration) {
-      if (!enemy.poisonEffects) {
-        enemy.poisonEffects = []
+
+    if (!enemy.isDead) {
+      // ========== 减速效果 ==========
+      if (bullet.slowEffect) {
+        enemy.slowTimer = 3000 // 减速3秒
+        enemy.slowEffect = Math.max(enemy.slowEffect ?? 0, bullet.slowEffect)
+      }
+
+      // ========== 毒素效果 ==========
+      if (bullet.poisonDamage && bullet.poisonDuration) {
+        if (!enemy.poisonEffects) {
+          enemy.poisonEffects = []
+        }
+
+        enemy.poisonEffects.push({
+          damage: bullet.poisonDamage,
+          duration: bullet.poisonDuration,
+          tickAccumulator: 0
+        })
       }
       
-      enemy.poisonEffects.push({
-        damage: bullet.poisonDamage,
-        duration: bullet.poisonDuration,
-        startTime: Date.now()
-      })
-      
-      console.log(`☠️ 敌人中毒,每秒${bullet.poisonDamage}点伤害`)
+      // ========== 眩晕效果 ==========
+      if (bullet.stunChance && Math.random() < bullet.stunChance) {
+        enemy.isStunned = true
+        enemy.stunTimer = Math.max(enemy.stunTimer ?? 0, bullet.stunDuration || 1000)
+      }
     }
-    
-    // ========== 眩晕效果 ==========
-    if (bullet.stunChance && Math.random() < bullet.stunChance) {
-      enemy.isStunned = true
-      enemy.stunEndTime = Date.now() + (bullet.stunDuration || 1000)
-      console.log(`💫 敌人被眩晕${bullet.stunDuration || 1000}ms`)
-    }
-    
-    // ========== 检查死亡 ==========
-    if (enemy.health <= 0 && !enemy.isDead) {
-      enemy.isDead = true
-      setUiState(prev => ({ ...prev, gold: prev.gold + enemy.reward }))
+
+    if (enemy.isDead) {
       gameStateRef.current.enemies = gameStateRef.current.enemies.filter(
         e => e.id !== enemy.id
       )
-      console.log(`敌人死亡,获得金币: ${enemy.reward}`)
     }
   }, [])
   
@@ -929,7 +997,9 @@ export function useGameEngine() {
     
     for (let i = bullets.length - 1; i >= 0; i--) {
       const bullet = bullets[i]
-      const target = enemies.find(e => e.id === bullet.targetId)
+      const target = enemies.find(
+        enemy => enemy.id === bullet.targetId && !enemy.isDead && !enemy.reachedEnd
+      )
       
       if (!target) {
         // 目标已死亡,移除子弹
@@ -941,15 +1011,16 @@ export function useGameEngine() {
       const dy = target.position.y - bullet.position.y
       const distance = Math.sqrt(dx * dx + dy * dy)
       
-      if (distance < 10) {
+      const moveDistance = bullet.speed * (deltaTime / 1000)
+
+      if (distance < 10 || moveDistance >= distance) {
         // 命中目标
         applyDamage(target, bullet)
         bullets.splice(i, 1)
       } else {
         // 继续移动
-        const speed = bullet.speed * (deltaTime / 1000)
-        bullet.position.x += (dx / distance) * speed
-        bullet.position.y += (dy / distance) * speed
+        bullet.position.x += (dx / distance) * moveDistance
+        bullet.position.y += (dy / distance) * moveDistance
       }
     }
   }, [applyDamage])
@@ -967,10 +1038,10 @@ export function useGameEngine() {
    * @param deltaTime - 距离上一帧的时间间隔(ms)
    */
   const update = useCallback((deltaTime: number) => {
-    // 在游戏进行中或准备阶段都执行更新(允许在准备阶段看到敌人移动和塔攻击)
-    if (uiState.gameStatus !== 'playing' && uiState.gameStatus !== 'preparing') return
+    if (uiState.gameStatus !== 'playing') return
     
-    spawnEnemies()
+    gameStateRef.current.gameTime += deltaTime
+    spawnEnemies(deltaTime)
     updateEnemies(deltaTime)
     processTowerAttacks()
     updateBullets(deltaTime)
@@ -983,15 +1054,20 @@ export function useGameEngine() {
       if (allEnemiesDead && noMoreSpawns) {
         // 波次完成
         gameStateRef.current.waveInProgress = false
-        gameStateRef.current.waveCompleted = true
+        gameStateRef.current.bullets = []
         
-        // 解锁放置阶段
-        setUiState(prev => ({
-          ...prev,
-          wood: 5,  // 重置木材
-          gameStatus: 'preparing',
-          canPlaceTowers: true
-        }))
+        setUiState(prev => {
+          if (prev.gameStatus === 'game_over') return prev
+
+          const nextStatus = getStatusAfterWave(prev.wave, WAVES.length)
+          const canBuild = nextStatus === 'building'
+          return {
+            ...prev,
+            wood: canBuild ? ECONOMY_CONFIG.woodPerRound : 0,
+            gameStatus: nextStatus,
+            canPlaceTowers: canBuild
+          }
+        })
         
         console.log(`第${uiState.wave}波完成!`)
       }
@@ -1019,14 +1095,16 @@ export function useGameEngine() {
     
     const { grid, enemies, towers, bullets } = gameStateRef.current
     
-    console.log('渲染帧 - 敌人数量:', enemies.length, '塔数量:', towers.length, '子弹数量:', bullets.length) // 调试
-    
     // 清空画布(考虑设备像素比)
     const dpr = window.devicePixelRatio || 1
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
     
     // 绘制网格
     drawGrid(ctx, grid)
+
+    if (gameStateRef.current.currentPath) {
+      drawPath(ctx, gameStateRef.current.currentPath)
+    }
     
     // 绘制必经点(在所有元素之前)
     drawWaypoints(ctx)
@@ -1085,6 +1163,26 @@ export function useGameEngine() {
       })
     })
   }
+
+  const drawPath = (
+    ctx: CanvasRenderingContext2D,
+    path: { row: number; col: number }[]
+  ) => {
+    const { cellSize } = MAP_CONFIG
+    ctx.save()
+    ctx.strokeStyle = 'rgba(244, 67, 54, 0.35)'
+    ctx.lineWidth = 3
+    ctx.setLineDash([6, 6])
+    ctx.beginPath()
+    path.forEach((point, index) => {
+      const x = point.col * cellSize + cellSize / 2
+      const y = point.row * cellSize + cellSize / 2
+      if (index === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.stroke()
+    ctx.restore()
+  }
   
   /**
    * 绘制必经点标记
@@ -1093,14 +1191,10 @@ export function useGameEngine() {
   const drawWaypoints = (ctx: CanvasRenderingContext2D) => {
     const { cellSize } = MAP_CONFIG
     
-    console.log(`📍 开始绘制${WAYPOINTS.length}个必经点`)
-    
     // 为每个必经点绘制不同颜色的标记
     WAYPOINTS.forEach((waypoint, index) => {
       const x = waypoint.col * cellSize + cellSize / 2
       const y = waypoint.row * cellSize + cellSize / 2
-      
-      console.log(`  第${index}个: ${waypoint.label} at (${waypoint.row}, ${waypoint.col}) → canvas(${x}, ${y})`)
       
       // 根据类型选择颜色
       let color: string
@@ -1152,7 +1246,6 @@ export function useGameEngine() {
       }
     })
     
-    console.log(`✅ 必经点已绘制,共${WAYPOINTS.length}个`)
   }
   
   /**
@@ -1162,8 +1255,6 @@ export function useGameEngine() {
    */
   const drawEnemy = (ctx: CanvasRenderingContext2D, enemy: Enemy) => {
     const config = ENEMY_TYPES[enemy.type]
-    
-    console.log('绘制敌人:', enemy.type, '位置:', enemy.position.x.toFixed(0), enemy.position.y.toFixed(0))
     
     // 绘制敌人身体
     ctx.fillStyle = config.color
@@ -1188,7 +1279,7 @@ export function useGameEngine() {
     )
     
     // 绘制血条前景
-    const healthPercent = enemy.health / enemy.maxHealth
+    const healthPercent = Math.max(0, Math.min(enemy.health / enemy.maxHealth, 1))
     ctx.fillStyle = '#00FF00'
     ctx.fillRect(
       enemy.position.x - barWidth / 2,
@@ -1292,11 +1383,45 @@ export function useGameEngine() {
   
   // ==================== 整合游戏循环 ====================
   
-  const { start, stop, pause, resume } = useGameLoop(
+  useGameLoop(
     update,
     render,
-    uiState.gameStatus === 'preparing' || uiState.gameStatus === 'playing'
+    uiState.gameStatus === 'building' ||
+      uiState.gameStatus === 'deciding' ||
+      uiState.gameStatus === 'ready' ||
+      uiState.gameStatus === 'playing'
   )
+
+  const pause = useCallback(() => {
+    setUiState(prev => prev.gameStatus === 'playing'
+      ? { ...prev, gameStatus: 'paused' }
+      : prev)
+  }, [])
+
+  const resume = useCallback(() => {
+    setUiState(prev => prev.gameStatus === 'paused'
+      ? { ...prev, gameStatus: 'playing' }
+      : prev)
+  }, [])
+
+  const resetGame = useCallback(() => {
+    const grid = initializeGrid()
+    gameStateRef.current = {
+      enemies: [],
+      towers: [],
+      bullets: [],
+      grid,
+      storedTowers: [],
+      currentPath: calculatePath(grid),
+      waveInProgress: false,
+      spawnQueue: [],
+      waveElapsedTime: 0,
+      gameTime: 0,
+      currentBatchTowerIds: [],
+      currentHealthMultiplier: 1
+    }
+    setUiState(createInitialUiState())
+  }, [calculatePath])
   
   return {
     uiState,
@@ -1309,9 +1434,8 @@ export function useGameEngine() {
     synthesizeSpecialTower,  // 新增
     upgradeGameLevel,  // ✅ 新增: 升级游戏等级
     startWave,
-    start,
-    stop,
     pause,
-    resume
+    resume,
+    resetGame
   }
 }

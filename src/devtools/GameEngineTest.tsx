@@ -13,9 +13,9 @@ export const GameEngineTest: React.FC = () => {
     gameStateRef,
     selectGem,
     startWave,
-    stop,
     pause,
-    resume
+    resume,
+    resetGame
   } = useGameEngine()
 
   // 初始化Canvas尺寸
@@ -70,8 +70,8 @@ export const GameEngineTest: React.FC = () => {
         <button onClick={resume} style={{ marginRight: '10px' }}>
           继续
         </button>
-        <button onClick={stop}>
-          停止
+        <button onClick={resetGame}>
+          重置
         </button>
       </div>
 

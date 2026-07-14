@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { soundManager } from '../services/audio'
 import { calculateUpgradeCost } from '../config/towers'
+import { WAVES } from '../config/waves'
+import type { GameStatus } from '../types/game'
 
 interface GameUIProps {
   uiState: {
@@ -9,7 +11,7 @@ interface GameUIProps {
     mineHealth: number
     maxMineHealth: number
     wave: number
-    gameStatus: 'preparing' | 'playing' | 'paused' | 'game_over' | 'victory'
+    gameStatus: GameStatus
     selectedGem: string | null
     canPlaceTowers: boolean
     gameLevel: number  // ✅ 新增: 游戏等级
@@ -19,6 +21,7 @@ interface GameUIProps {
   onResume: () => void
   onOpenSynthesis?: () => void
   onUpgradeGameLevel?: () => void  // ✅ 新增: 升级游戏等级回调
+  onResetGame: () => void
 }
 
 export const GameUI: React.FC<GameUIProps> = ({
@@ -27,9 +30,11 @@ export const GameUI: React.FC<GameUIProps> = ({
   onPause,
   onResume,
   onOpenSynthesis,
-  onUpgradeGameLevel
+  onUpgradeGameLevel,
+  onResetGame
 }) => {
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const isPreparationPhase = uiState.gameStatus === 'building' || uiState.gameStatus === 'ready'
   
   const toggleSound = () => {
     const newState = !soundEnabled
@@ -78,14 +83,14 @@ export const GameUI: React.FC<GameUIProps> = ({
       {onUpgradeGameLevel && (
         <button
           onClick={onUpgradeGameLevel}
-          disabled={uiState.gold < calculateUpgradeCost(uiState.gameLevel)}
+          disabled={!isPreparationPhase || uiState.gold < calculateUpgradeCost(uiState.gameLevel)}
           style={{
             padding: '8px 15px',
-            background: uiState.gold >= calculateUpgradeCost(uiState.gameLevel) ? '#9C27B0' : '#ccc',
+            background: isPreparationPhase && uiState.gold >= calculateUpgradeCost(uiState.gameLevel) ? '#9C27B0' : '#ccc',
             color: 'white',
             border: 'none',
             borderRadius: '8px',
-            cursor: uiState.gold >= calculateUpgradeCost(uiState.gameLevel) ? 'pointer' : 'not-allowed',
+            cursor: isPreparationPhase && uiState.gold >= calculateUpgradeCost(uiState.gameLevel) ? 'pointer' : 'not-allowed',
             fontSize: '14px',
             fontWeight: 'bold'
           }}
@@ -115,7 +120,7 @@ export const GameUI: React.FC<GameUIProps> = ({
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: '12px', opacity: 0.9 }}>波次</div>
         <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
-          {uiState.wave}/12
+          {uiState.wave}/{WAVES.length}
         </div>
       </div>
       
@@ -137,31 +142,53 @@ export const GameUI: React.FC<GameUIProps> = ({
           </div>
         )}
         
-        {uiState.gameStatus === 'preparing' && (
+        {uiState.gameStatus === 'building' && (
+          <div style={{
+            padding: '10px 16px',
+            background: '#1976D2',
+            borderRadius: '4px',
+            fontWeight: 'bold'
+          }}>
+            请放置5座塔
+          </div>
+        )}
+
+        {uiState.gameStatus === 'deciding' && (
+          <div style={{
+            padding: '10px 16px',
+            background: '#7B1FA2',
+            borderRadius: '4px',
+            fontWeight: 'bold'
+          }}>
+            请选择1座保留
+          </div>
+        )}
+
+        {uiState.gameStatus === 'ready' && (
           <button
             onClick={onStartWave}
-            disabled={uiState.wave >= 12}
+            disabled={uiState.wave >= WAVES.length}
             style={{
               padding: '10px 20px',
               background: '#4CAF50',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: uiState.wave >= 12 ? 'not-allowed' : 'pointer',
+              cursor: uiState.wave >= WAVES.length ? 'not-allowed' : 'pointer',
               fontSize: '16px',
               fontWeight: 'bold',
-              opacity: uiState.wave >= 12 ? 0.5 : 1,
+              opacity: uiState.wave >= WAVES.length ? 0.5 : 1,
               transition: 'all 0.2s'
             }}
             onMouseEnter={(e) => {
-              if (uiState.wave < 12) {
+              if (uiState.wave < WAVES.length) {
                 e.currentTarget.style.background = '#45a049'
                 e.currentTarget.style.transform = 'translateY(-2px)'
                 e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)'
               }
             }}
             onMouseLeave={(e) => {
-              if (uiState.wave < 12) {
+              if (uiState.wave < WAVES.length) {
                 e.currentTarget.style.background = '#4CAF50'
                 e.currentTarget.style.transform = 'translateY(0)'
                 e.currentTarget.style.boxShadow = 'none'
@@ -234,29 +261,49 @@ export const GameUI: React.FC<GameUIProps> = ({
         {onOpenSynthesis && (
           <button
             onClick={onOpenSynthesis}
+            disabled={!isPreparationPhase}
             style={{
               padding: '10px 20px',
-              background: '#FF9800',
+              background: isPreparationPhase ? '#FF9800' : '#9E9E9E',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: 'pointer',
+              cursor: isPreparationPhase ? 'pointer' : 'not-allowed',
               fontSize: '16px',
               fontWeight: 'bold',
               transition: 'all 0.2s'
             }}
             onMouseEnter={(e) => {
+              if (!isPreparationPhase) return
               e.currentTarget.style.background = '#F57C00'
               e.currentTarget.style.transform = 'translateY(-2px)'
               e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FF9800'
+              e.currentTarget.style.background = isPreparationPhase ? '#FF9800' : '#9E9E9E'
               e.currentTarget.style.transform = 'translateY(0)'
               e.currentTarget.style.boxShadow = 'none'
             }}
           >
-            🔧 合成
+          🔧 合成
+          </button>
+        )}
+
+        {(uiState.gameStatus === 'game_over' || uiState.gameStatus === 'victory') && (
+          <button
+            onClick={onResetGame}
+            style={{
+              padding: '10px 20px',
+              background: '#4CAF50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: 'bold'
+            }}
+          >
+            重新开始
           </button>
         )}
         

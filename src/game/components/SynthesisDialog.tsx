@@ -1,98 +1,83 @@
 import React, { useState } from 'react'
-import type { Tower, GemLevel, GemType, SpecialTowerType } from '../types/game'
-import { GEM_COLORS, SPECIAL_TOWER_COLORS, GEM_NAMES, SPECIAL_TOWER_NAMES, LEVEL_NAMES } from '../config/towers'
+import type { SpecialTowerType, Tower } from '../types/game'
+import {
+  canCraftSpecialTower,
+  findSynthesizableTowerPairs,
+  GEM_COLORS,
+  GEM_NAMES,
+  LEVEL_NAMES,
+  SPECIAL_TOWER_NAMES,
+  SPECIAL_TOWER_RECIPES
+} from '../config/towers'
 
 interface SynthesisDialogProps {
   storedTowers: Tower[]
-  onSynthesize: (towerId1: string, towerId2: string) => void
-  onSynthesizeSpecial?: (specialType: SpecialTowerType) => void
+  onSynthesize: (towerId1: string, towerId2: string) => boolean
+  onSynthesizeSpecial?: (specialType: SpecialTowerType) => boolean
   onClose: () => void
 }
 
+const getNextLevelName = (level: 'chipped' | 'flawed' | 'normal') => {
+  if (level === 'chipped') {
+    return LEVEL_NAMES.flawed
+  }
 
+  if (level === 'flawed') {
+    return LEVEL_NAMES.normal
+  }
+
+  return LEVEL_NAMES.flawless
+}
 
 export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
   storedTowers,
   onSynthesize,
-  onSynthesizeSpecial,  // 新增
+  onSynthesizeSpecial,
   onClose
 }) => {
   const [selectedTower1, setSelectedTower1] = useState<string | null>(null)
   const [selectedTower2, setSelectedTower2] = useState<string | null>(null)
 
-  // 找出可合成的塔对(相同类型和等级)
-  const findSynthesizablePairs = () => {
-    const pairs: Array<[Tower, Tower]> = []
-    const levels: GemLevel[] = ['chipped', 'flawed', 'normal']
-    
-    console.log('查找可合成的塔对,总塔数:', storedTowers.length)  // 调试
-    
-    levels.forEach(level => {
-      const gemTypes: GemType[] = ['amethyst', 'diamond', 'topaz', 'opal']
-      
-      gemTypes.forEach(gemType => {
-        const towersOfType = storedTowers.filter(
-          t => t.gemType === gemType && t.level === level
-        )
-        
-        console.log(`${gemType} ${level}:`, towersOfType.length, '个')  // 调试
-        
-        // 如果有至少2个相同类型和等级的塔,可以合成
-        for (let i = 0; i < towersOfType.length - 1; i++) {
-          for (let j = i + 1; j < towersOfType.length; j++) {
-            pairs.push([towersOfType[i], towersOfType[j]])
-            console.log(`找到可合成对: ${towersOfType[i].id} + ${towersOfType[j].id}`)  // 调试
-          }
-        }
-      })
-    })
-    
-    console.log('总共找到', pairs.length, '对可合成的塔')  // 调试
-    return pairs
-  }
+  const pairs = findSynthesizableTowerPairs(storedTowers)
+  const specialTowerTypes = Object.keys(SPECIAL_TOWER_RECIPES) as SpecialTowerType[]
+  const specialTowers = specialTowerTypes.map(type => {
+    const recipe = SPECIAL_TOWER_RECIPES[type]
+    const [firstGem, secondGem] = recipe.requiredGems
 
-  // 检查是否可以合成特殊塔
-  const canCraftSpecialTower = () => {
-    const hasDiamond = storedTowers.some(t => t.gemType === 'diamond')
-    const hasTopaz = storedTowers.some(t => t.gemType === 'topaz')
-    const hasOpal = storedTowers.some(t => t.gemType === 'opal')
-    const hasAmethyst = storedTowers.some(t => t.gemType === 'amethyst')
-    
-    return [
-      { 
-        name: '银塔', 
-        recipe: '钻石 + 黄玉', 
-        type: 'silver',
-        available: hasDiamond && hasTopaz,
-        description: '多目标攻击 + 溅射伤害'
-      },
-      { 
-        name: '孔雀石', 
-        recipe: '黄玉 + 蛋白石', 
-        type: 'malachite',
-        available: hasTopaz && hasOpal,
-        description: '溅射伤害 + 减速效果'
-      },
-      { 
-        name: '星红宝石', 
-        recipe: '紫水晶 + 钻石', 
-        type: 'starRuby',
-        available: hasAmethyst && hasDiamond,
-        description: '纯粹伤害 + 多目标攻击'
-      }
-    ]
+    return {
+      type,
+      name: SPECIAL_TOWER_NAMES[type],
+      recipe: `${GEM_NAMES[firstGem]} + ${GEM_NAMES[secondGem]}`,
+      available: canCraftSpecialTower(storedTowers, type),
+      description: recipe.description
+    }
+  })
+
+  const completeSynthesis = (successful: boolean) => {
+    if (!successful) {
+      return
+    }
+
+    setSelectedTower1(null)
+    setSelectedTower2(null)
+    onClose()
   }
 
   const handleSynthesize = () => {
-    if (selectedTower1 && selectedTower2) {
-      onSynthesize(selectedTower1, selectedTower2)
-      setSelectedTower1(null)
-      setSelectedTower2(null)
+    if (!selectedTower1 || !selectedTower2) {
+      return
     }
+
+    completeSynthesis(onSynthesize(selectedTower1, selectedTower2))
   }
 
-  const pairs = findSynthesizablePairs()
-  const specialTowers = canCraftSpecialTower()
+  const handleSynthesizeSpecial = (specialType: SpecialTowerType) => {
+    if (!onSynthesizeSpecial) {
+      return
+    }
+
+    completeSynthesis(onSynthesizeSpecial(specialType))
+  }
 
   return (
     <div style={{
@@ -116,7 +101,6 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
         overflow: 'auto',
         boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
       }}>
-        {/* 标题栏 */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -142,15 +126,14 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
           </button>
         </div>
 
-        {/* 特殊塔配方 */}
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ margin: '0 0 10px 0', color: '#666', fontSize: '16px' }}>
             🔮 特殊塔配方
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
-            {specialTowers.map((tower, idx) => (
+            {specialTowers.map(tower => (
               <div
-                key={idx}
+                key={tower.type}
                 style={{
                   padding: '15px',
                   background: tower.available ? '#E8F5E9' : '#F5F5F5',
@@ -169,7 +152,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                 <div style={{ fontSize: '11px', color: '#999', marginBottom: '10px' }}>
                   {tower.description}
                 </div>
-                
+
                 {tower.available ? (
                   <div>
                     <div style={{ fontSize: '12px', color: '#4CAF50', marginBottom: '8px' }}>
@@ -177,10 +160,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                     </div>
                     {onSynthesizeSpecial && (
                       <button
-                        onClick={() => {
-                          console.log('点击合成特殊塔:', tower.type)
-                          onSynthesizeSpecial!(tower.type as any)
-                        }}
+                        onClick={() => handleSynthesizeSpecial(tower.type)}
                         style={{
                           width: '100%',
                           padding: '8px',
@@ -193,8 +173,12 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                           fontWeight: 'bold',
                           transition: 'background 0.2s'
                         }}
-                        onMouseOver={(e) => e.currentTarget.style.background = '#45a049'}
-                        onMouseOut={(e) => e.currentTarget.style.background = '#4CAF50'}
+                        onMouseOver={event => {
+                          event.currentTarget.style.background = '#45a049'
+                        }}
+                        onMouseOut={event => {
+                          event.currentTarget.style.background = '#4CAF50'
+                        }}
                       >
                         🔧 合成{tower.name}
                       </button>
@@ -202,7 +186,7 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                   </div>
                 ) : (
                   <div style={{ fontSize: '12px', color: '#999' }}>
-                     材料不足
+                    材料不足
                   </div>
                 )}
               </div>
@@ -210,12 +194,11 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
           </div>
         </div>
 
-        {/* 可合成的塔对 */}
         <div>
           <h3 style={{ margin: '0 0 10px 0', color: '#666', fontSize: '16px' }}>
             ⚡ 可合成的塔对 ({pairs.length})
           </h3>
-          
+
           {pairs.length === 0 ? (
             <div style={{
               padding: '20px',
@@ -224,17 +207,19 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
               background: '#F5F5F5',
               borderRadius: '4px'
             }}>
-              暂无可合成的塔对<br/>
-              <small>需要2个相同类型和等级的塔</small>
-              <br/><br/>
+              暂无可合成的塔对<br />
+              <small>需要2个相同类型和等级的基础塔</small>
+              <br /><br />
               <strong>当前存储区有 {storedTowers.length} 个塔:</strong>
               {storedTowers.length > 0 ? (
                 <ul style={{ textAlign: 'left', marginTop: '10px', paddingLeft: '20px' }}>
-                  {storedTowers.map(t => (
-                    <li key={t.id} style={{ fontSize: '12px', marginBottom: '4px' }}>
-                      {t.specialType 
-                        ? SPECIAL_TOWER_NAMES[t.specialType] 
-                        : `${GEM_NAMES[t.gemType || 'amethyst']} ${LEVEL_NAMES[t.level]}`} (ID: {t.id.substring(0, 8)})
+                  {storedTowers.map(tower => (
+                    <li key={tower.id} style={{ fontSize: '12px', marginBottom: '4px' }}>
+                      {tower.specialType
+                        ? SPECIAL_TOWER_NAMES[tower.specialType]
+                        : tower.gemType
+                          ? `${GEM_NAMES[tower.gemType]} ${LEVEL_NAMES[tower.level]}`
+                          : '未知塔'} (ID: {tower.id.substring(0, 8)})
                     </li>
                   ))}
                 </ul>
@@ -244,22 +229,21 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px' }}>
-              {pairs.map(([tower1, tower2], idx) => {
+              {pairs.map(([tower1, tower2]) => {
                 const isSelected = selectedTower1 === tower1.id && selectedTower2 === tower2.id
-                
+
                 return (
                   <div
-                    key={idx}
+                    key={`${tower1.id}:${tower2.id}`}
                     onClick={() => {
-                      console.log('点击塔对:', tower1.id, tower2.id)  // 调试
                       setSelectedTower1(tower1.id)
                       setSelectedTower2(tower2.id)
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#F5F5F5'
+                    onMouseEnter={event => {
+                      event.currentTarget.style.background = '#F5F5F5'
                     }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = isSelected ? '#E3F2FD' : 'white'
+                    onMouseLeave={event => {
+                      event.currentTarget.style.background = isSelected ? '#E3F2FD' : 'white'
                     }}
                     style={{
                       padding: '10px',
@@ -271,57 +255,49 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                      {/* 塔1图标 */}
                       <div style={{
                         width: '30px',
                         height: '30px',
-                        background: tower1.specialType 
-                          ? SPECIAL_TOWER_COLORS[tower1.specialType]
-                          : GEM_COLORS[tower1.gemType || 'amethyst'],
+                        background: GEM_COLORS[tower1.gemType],
                         borderRadius: '4px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: '12px',
                         fontWeight: 'bold',
-                        color: tower1.gemType === 'diamond' || tower1.specialType === 'moonstone' ? '#333' : 'white',
+                        color: tower1.gemType === 'diamond' ? '#333' : 'white',
                         border: '1px solid #666'
                       }}>
                         {tower1.level.substring(0, 1).toUpperCase()}
                       </div>
-                      
+
                       <span style={{ color: '#999' }}>+</span>
-                      
-                      {/* 塔2图标 */}
+
                       <div style={{
                         width: '30px',
                         height: '30px',
-                        background: tower2.specialType
-                          ? SPECIAL_TOWER_COLORS[tower2.specialType]
-                          : GEM_COLORS[tower2.gemType || 'amethyst'],
+                        background: GEM_COLORS[tower2.gemType],
                         borderRadius: '4px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: '12px',
                         fontWeight: 'bold',
-                        color: tower2.gemType === 'diamond' || tower2.specialType === 'moonstone' ? '#333' : 'white',
+                        color: tower2.gemType === 'diamond' ? '#333' : 'white',
                         border: '1px solid #666'
                       }}>
                         {tower2.level.substring(0, 1).toUpperCase()}
                       </div>
-                      
+
                       <span style={{ flex: 1 }}></span>
-                      
+
                       <span style={{ fontSize: '12px', color: '#666' }}>
-                        → {LEVEL_NAMES[tower1.level === 'chipped' ? 'flawed' : tower1.level === 'flawed' ? 'normal' : 'flawless']}
+                        → {getNextLevelName(tower1.level)}
                       </span>
                     </div>
-                    
+
                     <div style={{ fontSize: '11px', color: '#999' }}>
-                      {tower1.specialType 
-                        ? SPECIAL_TOWER_NAMES[tower1.specialType]
-                        : `${GEM_NAMES[tower1.gemType || 'amethyst']} ${LEVEL_NAMES[tower1.level]}`} x2
+                      {GEM_NAMES[tower1.gemType]} {LEVEL_NAMES[tower1.level]} x2
                     </div>
                   </div>
                 )
@@ -330,7 +306,6 @@ export const SynthesisDialog: React.FC<SynthesisDialogProps> = ({
           )}
         </div>
 
-        {/* 合成按钮 */}
         {selectedTower1 && selectedTower2 && (
           <div style={{
             marginTop: '20px',

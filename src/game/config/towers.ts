@@ -293,12 +293,67 @@ export function canCraftSpecialTower(
   specialType: SpecialTowerType
 ): boolean {
   const recipe = SPECIAL_TOWER_RECIPES[specialType]
-  const [gem1, gem2] = recipe.requiredGems
-  
-  const hasGem1 = storedTowers.some(t => t.gemType === gem1)
-  const hasGem2 = storedTowers.some(t => t.gemType === gem2)
-  
-  return hasGem1 && hasGem2
+  const availableTowers = [...storedTowers]
+
+  return recipe.requiredGems.every(gemType => {
+    const materialIndex = availableTowers.findIndex(tower => tower.gemType === gemType)
+
+    if (materialIndex === -1) {
+      return false
+    }
+
+    availableTowers.splice(materialIndex, 1)
+    return true
+  })
+}
+
+export const SYNTHESIZABLE_GEM_LEVELS = ['chipped', 'flawed', 'normal'] as const
+
+type SynthesizableGemLevel = typeof SYNTHESIZABLE_GEM_LEVELS[number]
+
+interface SynthesisCandidate {
+  gemType?: GemType
+  specialType?: SpecialTowerType
+  level: GemLevel
+}
+
+type UpgradeableBaseTower<T extends SynthesisCandidate> = T & {
+  gemType: GemType
+  specialType?: undefined
+  level: SynthesizableGemLevel
+}
+
+const synthesizableLevelSet: ReadonlySet<GemLevel> = new Set(SYNTHESIZABLE_GEM_LEVELS)
+
+function isUpgradeableBaseTower<T extends SynthesisCandidate>(
+  tower: T
+): tower is UpgradeableBaseTower<T> {
+  return tower.gemType !== undefined
+    && tower.specialType === undefined
+    && synthesizableLevelSet.has(tower.level)
+}
+
+/**
+ * 查找所有可进行普通升级合成的塔对。
+ */
+export function findSynthesizableTowerPairs<T extends SynthesisCandidate>(
+  storedTowers: readonly T[]
+): Array<[UpgradeableBaseTower<T>, UpgradeableBaseTower<T>]> {
+  const candidates = storedTowers.filter(isUpgradeableBaseTower)
+  const pairs: Array<[UpgradeableBaseTower<T>, UpgradeableBaseTower<T>]> = []
+
+  for (let firstIndex = 0; firstIndex < candidates.length - 1; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < candidates.length; secondIndex += 1) {
+      const firstTower = candidates[firstIndex]
+      const secondTower = candidates[secondIndex]
+
+      if (firstTower.gemType === secondTower.gemType && firstTower.level === secondTower.level) {
+        pairs.push([firstTower, secondTower])
+      }
+    }
+  }
+
+  return pairs
 }
 
 /**

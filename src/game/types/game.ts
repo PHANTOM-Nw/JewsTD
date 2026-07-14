@@ -4,6 +4,17 @@ export interface Position {
   y: number
 }
 
+export type GameStatus =
+  | 'building'
+  | 'deciding'
+  | 'ready'
+  | 'playing'
+  | 'paused'
+  | 'game_over'
+  | 'victory'
+
+export type EnemyType = 'basic' | 'fast' | 'tank' | 'boss'
+
 // 宝石塔类型 - 8种基础宝石
 export type GemType = 
   | 'amethyst'    // 紫水晶 - 高伤害单体
@@ -30,7 +41,7 @@ export type SpecialTowerType =
 // 敌人类
 export interface Enemy {
   id: string
-  type: 'basic' | 'fast' | 'tank'
+  type: EnemyType
   position: Position
   health: number
   maxHealth: number
@@ -40,18 +51,20 @@ export interface Enemy {
   pathIndex: number    // 当前路径点索引
   progress: number     // 在两点间的进度(0-1)
   reward: number       // 击杀奖励金币
+  mineDamage: number   // 抵达终点时对矿坑造成的伤害
   reachedEnd?: boolean // 是否到达终点
   slowTimer?: number   // 减速剩余时间(ms)
+  slowEffect?: number  // 当前减速比例(0-1)
   isDead?: boolean     // 是否已死亡
   
   // 特效相关属性
   poisonEffects?: Array<{
     damage: number
     duration: number
-    startTime: number
+    tickAccumulator: number
   }>
   isStunned?: boolean
-  stunEndTime?: number
+  stunTimer?: number
 }
 
 // 防御塔类
@@ -113,7 +126,7 @@ export interface GridCell {
 
 // 波次敌人配置
 export interface WaveEnemyConfig {
-  type: 'basic' | 'fast' | 'tank'
+  type: EnemyType
   count: number
   interval: number  // 生成间隔(ms)
 }
@@ -138,7 +151,7 @@ export interface GameState {
   bullets: Bullet[]
   grid: GridCell[][]     // 地图网格
   storedTowers: Tower[]  // 存储的塔(跨波次保留)
-  gameStatus: 'preparing' | 'playing' | 'paused' | 'game_over' | 'victory'
+  gameStatus: GameStatus
   selectedGem: GemType | null  // 当前选中的宝石类型
   currentPath: { row: number; col: number }[] | null  // 当前BFS路径
   availableGems: GemType[]  // 当前波可用的5个随机宝石
@@ -148,13 +161,10 @@ export interface GameState {
 export interface UIState {
   wood: number
   gold: number
-  lives: number
+  mineHealth: number
+  maxMineHealth: number
   wave: number
-  gameStatus: 'preparing' | 'playing' | 'completed'
+  gameStatus: GameStatus
   canPlaceTowers: boolean
-  currentWave: number
-  selectedTowerId: string | null
-  storedTowerIds: string[]
-  currentBatchTowerIds: string[]
   gameLevel: number  // 游戏等级,影响塔生成概率
 }

@@ -1,4 +1,4 @@
-import type { Enemy } from '../types/game'
+import type { Enemy, EnemyType } from '../types/game'
 
 export const ENEMY_TYPES = {
   basic: {
@@ -7,6 +7,7 @@ export const ENEMY_TYPES = {
     armor: 0,
     magicResist: 0,
     reward: 5,
+    mineDamage: 1,
     color: '#FF6B6B',
     radius: 12,
     description: '普通敌人'
@@ -17,6 +18,7 @@ export const ENEMY_TYPES = {
     armor: 0,
     magicResist: 0,
     reward: 7,
+    mineDamage: 1,
     color: '#FFA500',
     radius: 10,
     description: '快速敌人'
@@ -27,15 +29,27 @@ export const ENEMY_TYPES = {
     armor: 5,
     magicResist: 0.2,
     reward: 15,
+    mineDamage: 1,
     color: '#8B0000',
     radius: 14,
     description: '坦克敌人'
+  },
+  boss: {
+    health: 500,
+    speed: 32,
+    armor: 10,
+    magicResist: 0.3,
+    reward: 75,
+    mineDamage: 5,
+    color: '#4A148C',
+    radius: 18,
+    description: '矿坑领主'
   }
 }
 
 // 创建敌人的辅助函数
 export function createEnemy(
-  type: 'basic' | 'fast' | 'tank',
+  type: EnemyType,
   startPosition: { x: number; y: number },
   healthMultiplier: number = 1.0  // 血量倍率(默认1.0)
 ): Enemy {
@@ -55,6 +69,7 @@ export function createEnemy(
     magicResist: config.magicResist,
     pathIndex: 0,
     progress: 0,
-    reward: config.reward
+    reward: config.reward,
+    mineDamage: config.mineDamage
   }
 }

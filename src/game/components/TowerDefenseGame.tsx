@@ -6,6 +6,7 @@ import { BuildPanel } from './BuildPanel'
 import { SynthesisDialog } from './SynthesisDialog'
 import type { GemType, GemLevel, Tower } from '../types/game'
 import { GEM_COLORS, GEM_NAMES, LEVEL_NAMES } from '../config/towers'
+import { ECONOMY_CONFIG } from '../config/economy'
 
 export const TowerDefenseGame: React.FC = () => {
   const {
@@ -18,14 +19,13 @@ export const TowerDefenseGame: React.FC = () => {
     synthesizeSpecialTower,  // 新增
     upgradeGameLevel,  // ✅ 新增: 升级游戏等级
     startWave,
-    start,
     pause,
-    resume
+    resume,
+    resetGame
   } = useGameEngine()
   
   // 跟踪当前批次放置的塔
   const [currentBatchTowers, setCurrentBatchTowers] = useState<string[]>([])
-  const [showDecisionDialog, setShowDecisionDialog] = useState(false)
   const [selectedTowerForDecision, setSelectedTowerForDecision] = useState<Tower | null>(null)
   const [showSynthesisDialog, setShowSynthesisDialog] = useState(false)
 
@@ -57,12 +57,9 @@ export const TowerDefenseGame: React.FC = () => {
       if (existingTower) {
         const isCurrentBatch = gameStateRef.current.currentBatchTowerIds.includes(existingTower.id)
         
-        if (isCurrentBatch) {
-          if (currentBatchTowers.length >= 5) {
-            setSelectedTowerForDecision(existingTower)
-            setShowDecisionDialog(true)
-          }
-        } else {
+        if (isCurrentBatch && uiState.gameStatus === 'deciding') {
+          setSelectedTowerForDecision(existingTower)
+        } else if (uiState.gameStatus === 'building' || uiState.gameStatus === 'ready') {
           setShowSynthesisDialog(true)
         }
         
@@ -70,11 +67,14 @@ export const TowerDefenseGame: React.FC = () => {
       }
     }
     
-    // ✅ 新增: 点击障碍物,消耗木材删除
+    // 点击障碍物,消耗金币删除
     if (cell.type === 'obstacle') {
-      if (uiState.wood <= 0) {
-        console.warn('木材不足,无法删除障碍物')
-        alert('需要1个木材才能删除障碍物!')
+      if (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') {
+        return
+      }
+
+      if (uiState.gold < ECONOMY_CONFIG.obstacleRemovalGoldCost) {
+        alert(`需要${ECONOMY_CONFIG.obstacleRemovalGoldCost}金币才能删除障碍物!`)
         return
       }
       
@@ -82,8 +82,8 @@ export const TowerDefenseGame: React.FC = () => {
       return
     }
     
-    // 点击空地,执行放置逻辑 - 现有逻辑保持不变
-    if (uiState.gameStatus !== 'preparing') return
+    // 点击空地,执行放置逻辑
+    if (uiState.gameStatus !== 'building') return
     if (!uiState.canPlaceTowers) {
       console.warn('当前波次中不能放置塔')
       return
@@ -100,8 +100,7 @@ export const TowerDefenseGame: React.FC = () => {
       setCurrentBatchTowers(prev => [...prev, tower.id])
       
       // 如果已经放置了5个塔,自动进入决策模式
-      if (currentBatchTowers.length + 1 >= 5) {
-        setShowDecisionDialog(true)
+      if (currentBatchTowers.length + 1 >= ECONOMY_CONFIG.towersPerRound) {
         // 默认选中第一个塔
         const firstTowerId = currentBatchTowers.length > 0 
           ? currentBatchTowers[0] 
@@ -115,7 +114,8 @@ export const TowerDefenseGame: React.FC = () => {
   }, [
     uiState.gameStatus, 
     uiState.canPlaceTowers, 
-    uiState.wood, 
+    uiState.wood,
+    uiState.gold,
     placeTower, 
     currentBatchTowers,
     gameStateRef,
@@ -123,14 +123,14 @@ export const TowerDefenseGame: React.FC = () => {
   ])
 
   const handleFinalizeTowers = (keepTowerId: string) => {
-    finalizeTowers(keepTowerId)
-    setCurrentBatchTowers([])
-    setShowDecisionDialog(false)
+    if (finalizeTowers(keepTowerId)) {
+      setCurrentBatchTowers([])
+      setSelectedTowerForDecision(null)
+    }
   }
 
   const handleStartWave = () => {
     startWave()
-    start()
   }
 
   const handlePause = () => {
@@ -139,6 +139,13 @@ export const TowerDefenseGame: React.FC = () => {
 
   const handleResume = () => {
     resume()
+  }
+
+  const handleResetGame = () => {
+    resetGame()
+    setCurrentBatchTowers([])
+    setSelectedTowerForDecision(null)
+    setShowSynthesisDialog(false)
   }
 
   return (
@@ -159,6 +166,7 @@ export const TowerDefenseGame: React.FC = () => {
         onResume={handleResume}
         onOpenSynthesis={() => setShowSynthesisDialog(true)}
         onUpgradeGameLevel={upgradeGameLevel}  // ✅ 新增
+        onResetGame={handleResetGame}
       />
       
       {/* 游戏主体区域 */}
@@ -166,8 +174,9 @@ export const TowerDefenseGame: React.FC = () => {
         {/* 左侧建造面板 */}
         <BuildPanel
           wood={uiState.wood}
+          gold={uiState.gold}
           placedCount={currentBatchTowers.length}
-          canPlaceTowers={uiState.canPlaceTowers}
+          gameStatus={uiState.gameStatus}
         />
         
         {/* 中间Canvas */}
@@ -178,7 +187,7 @@ export const TowerDefenseGame: React.FC = () => {
           />
           
           {/* 决策对话框 */}
-          {showDecisionDialog && selectedTowerForDecision && (
+          {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (
             <div style={{
               position: 'absolute',
               top: '50%',
@@ -194,6 +203,39 @@ export const TowerDefenseGame: React.FC = () => {
               <h3 style={{ margin: '0 0 15px 0', textAlign: 'center', color: '#333' }}>
                 选择要保留的塔
               </h3>
+
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                justifyContent: 'center',
+                marginBottom: '15px'
+              }}>
+                {currentBatchTowers.map(towerId => {
+                  const tower = gameStateRef.current.towers.find(candidate => candidate.id === towerId)
+                  if (!tower?.gemType) return null
+
+                  const isSelected = tower.id === selectedTowerForDecision.id
+                  return (
+                    <button
+                      key={tower.id}
+                      onClick={() => setSelectedTowerForDecision(tower)}
+                      title={`${getGemName(tower.gemType)} ${getLevelName(tower.level)}`}
+                      style={{
+                        width: '44px',
+                        height: '44px',
+                        background: getGemColor(tower.gemType),
+                        border: isSelected ? '4px solid #2196F3' : '2px solid #666',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        color: tower.gemType === 'diamond' ? '#333' : 'white',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {tower.level.substring(0, 1).toUpperCase()}
+                    </button>
+                  )
+                })}
+              </div>
               
               {/* 显示选中的塔信息 */}
               <div style={{
@@ -239,7 +281,7 @@ export const TowerDefenseGame: React.FC = () => {
               </div>
               
               {/* 操作按钮 */}
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex' }}>
                 <button
                   onClick={() => handleFinalizeTowers(selectedTowerForDecision.id)}
                   style={{
@@ -255,24 +297,6 @@ export const TowerDefenseGame: React.FC = () => {
                   }}
                 >
                   ✓ 保留到存储区
-                </button>
-                
-                <button
-                  onClick={() => {
-                    setShowDecisionDialog(false)
-                    setSelectedTowerForDecision(null)
-                  }}
-                  style={{
-                    padding: '12px 20px',
-                    background: '#FF5722',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px'
-                  }}
-                >
-                  取消
                 </button>
               </div>
               
@@ -295,13 +319,11 @@ export const TowerDefenseGame: React.FC = () => {
           storedTowers={gameStateRef.current.storedTowers}
           onSynthesize={(id1, id2) => {
             console.log('尝试合成:', id1, id2)
-            synthesizeTowers(id1, id2)
-            setShowSynthesisDialog(false)
+            return synthesizeTowers(id1, id2)
           }}
           onSynthesizeSpecial={(specialType) => {  // 新增
             console.log('合成特殊塔:', specialType)
-            synthesizeSpecialTower(specialType)
-            setShowSynthesisDialog(false)
+            return synthesizeSpecialTower(specialType)
           }}
           onClose={() => setShowSynthesisDialog(false)}
         />

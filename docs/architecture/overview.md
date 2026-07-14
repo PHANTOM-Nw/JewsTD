@@ -11,6 +11,8 @@ main.tsx
           ├─ UI 组件
           └─ game/engine/useGameEngine.ts
               ├─ config/*
+              ├─ engine/gameFlow.ts
+              ├─ engine/combat.ts
               ├─ pathfinding/*
               ├─ services/audio.ts
               └─ useGameLoop.ts
@@ -25,12 +27,31 @@ main.tsx
 
 外部组件只调用引擎暴露的动作，例如放置塔、删除障碍、合成和开始波次，不直接修改引擎内部 state。
 
+## 回合状态机
+
+引擎使用显式状态约束一轮操作，而不是只依靠按钮显隐：
+
+```text
+building ──放满5座──> deciding ──保留1座──> ready ──开波──> playing
+                                                               │   ▲
+                                                               └─ paused
+
+playing ──非最终波结算──> building
+playing ──第12波结算────> victory
+playing ──矿坑生命归零──> game_over
+victory/game_over ──重新开始──> building
+```
+
+`gameFlow.ts` 保存可独立测试的建造批次、开波前置条件和最终波状态规则。UI 只能通过 `placeTower`、`finalizeTowers`、`startWave`、`pause`、`resume` 和 `resetGame` 等动作推动状态转换。暂停状态不满足 `useGameLoop` 的运行条件，因此动画帧和基于帧的游戏时间都会停止。
+
 ## 一帧的主要流程
 
 1. `useGameLoop` 计算并限制 delta time。
-2. 引擎更新敌人生成、移动、持续效果、塔攻击和子弹碰撞。
+2. 引擎更新敌人生成、移动、毒素/减速/眩晕、塔攻击和子弹碰撞。
 3. 引擎处理死亡、奖励、漏怪和波次结束。
 4. 渲染函数读取 `gameStateRef`，将地图对象绘制到 Canvas。
+
+`combat.ts` 提供伤害减免与暴击、目标优先级、多目标数量和减速比例等纯计算。`useGameEngine` 负责把这些规则编排进逐帧战斗，并处理溅射、邻近目标穿透、毒素、眩晕、金币奖励和矿坑伤害。`config/economy.ts` 集中定义起始资源、每轮建造资源和 10 金币清障成本；数值组件和引擎都读取这份配置。
 
 ## 寻路边界
 
@@ -39,7 +60,8 @@ main.tsx
 ## 当前技术债
 
 - `useGameEngine.ts` 同时承担资源、建造、合成、波次、战斗和渲染，体积较大。后续应按系统逐步提取纯函数，并为每次提取补测试。
-- 自动化测试目前覆盖寻路、地图配置、塔规则和碰撞工具；`useGameEngine` 的资源、波次和战斗状态转换仍缺少回归覆盖。
+- 当前 9 个测试文件、65 项测试已覆盖寻路、地图与经济配置、塔和敌人配置、12 波及最终 Boss 配置、建造/波次纯状态规则、矿坑伤害、伤害与索敌、邻近穿透、毒素、减速/眩晕计时、幂等死亡和碰撞工具。Hook 内部的完整逐帧编排、React 交互及从一波结算到下一轮补给仍缺少直接的自动化集成测试。
+- Chromium 已验证首轮建造到开波、暂停时帧冻结及继续后恢复，但完整第一波结算和完整 12 波通关尚未做浏览器端端到端验收。
 - `src/devtools/` 保留手工检查代码，但不作为自动化测试的替代品。
 - 交互反馈大量使用 `alert` 和控制台日志，后续应统一为游戏内通知与可控调试日志。
 - 多数组件仍使用行内样式，视觉系统尚未形成设计令牌和响应式布局。
