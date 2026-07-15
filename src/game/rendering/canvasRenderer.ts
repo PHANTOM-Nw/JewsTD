@@ -3,11 +3,18 @@ import type {
   DamageNumber,
   Enemy,
   GridCell,
+  MahjongNumberTile,
   PlacementPreview,
   PlacementPreviewStatus,
   Tower
 } from '../types/game'
 import { ENEMY_TYPES } from '../config/enemies'
+import {
+  MAHJONG_BAMBOO_LAYOUTS,
+  MAHJONG_CHARACTER_NUMERALS,
+  MAHJONG_DOT_LAYOUTS
+} from '../config/mahjong'
+import type { FaceMark } from '../config/mahjong'
 import { MAP_CONFIG, WAYPOINTS } from '../config/map'
 import { getDamageNumberPresentation } from './damageNumberPresentation'
 import { getPlacementPreviewPresentation } from './placementPreviewPresentation'
@@ -38,6 +45,16 @@ interface CanvasRendererOptions {
 }
 
 const ENEMY_SPRITE_PADDING = 2
+
+const MAHJONG_MARK_COLORS = {
+  red: '#c83228',
+  green: '#208653',
+  blue: '#24589a'
+} as const
+
+const MAHJONG_TILE_ASPECT_RATIO = 40 / 54
+const MAHJONG_TOWER_HEIGHT = 30
+const MAHJONG_WALL_FACE_HEIGHT = 26
 
 interface PathStyle {
   glow: string
@@ -107,6 +124,276 @@ function drawSprite(
 ) {
   if (!image) return
   ctx.drawImage(image, x - width / 2, y - height / 2, width, height)
+}
+
+function drawMahjongDotFace(
+  ctx: CanvasRenderingContext2D,
+  rank: MahjongNumberTile['rank'],
+  marks: readonly FaceMark[]
+) {
+  if (rank === 1) {
+    const rings = [
+      { radius: 8.4, color: MAHJONG_MARK_COLORS.blue, width: 2.2 },
+      { radius: 6.1, color: MAHJONG_MARK_COLORS.green, width: 2 },
+      { radius: 3.8, color: MAHJONG_MARK_COLORS.red, width: 2 }
+    ]
+    rings.forEach(ring => {
+      ctx.beginPath()
+      ctx.arc(20, 27, ring.radius, 0, Math.PI * 2)
+      ctx.strokeStyle = ring.color
+      ctx.lineWidth = ring.width
+      ctx.stroke()
+    })
+    ctx.beginPath()
+    ctx.arc(20, 27, 1.4, 0, Math.PI * 2)
+    ctx.fillStyle = MAHJONG_MARK_COLORS.green
+    ctx.fill()
+    return
+  }
+
+  const radius = marks.length >= 8 ? 2.6 : 3.6
+
+  marks.forEach(faceMark => {
+    const x = faceMark.x * 40
+    const y = faceMark.y * 54
+    const color = MAHJONG_MARK_COLORS[faceMark.color]
+
+    ctx.beginPath()
+    ctx.arc(x, y, radius, 0, Math.PI * 2)
+    ctx.strokeStyle = color
+    ctx.lineWidth = radius > 5 ? 3 : 1.7
+    ctx.stroke()
+
+    ctx.beginPath()
+    ctx.arc(x, y, Math.max(1.1, radius * 0.28), 0, Math.PI * 2)
+    ctx.fillStyle = color
+    ctx.fill()
+  })
+}
+
+function drawMahjongBirdFace(
+  ctx: CanvasRenderingContext2D,
+  faceMark: FaceMark
+) {
+  const x = faceMark.x * 40
+  const y = faceMark.y * 54
+
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.strokeStyle = MAHJONG_MARK_COLORS.green
+  ctx.lineWidth = 3
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(-8, 6)
+  ctx.bezierCurveTo(-8, -2, -3, -10, 4, -11)
+  ctx.bezierCurveTo(9, -11, 11, -6, 9, -2)
+  ctx.bezierCurveTo(7, 2, 3, 4, -1, 5)
+  ctx.lineTo(-1, 12)
+  ctx.stroke()
+
+  ctx.strokeStyle = MAHJONG_MARK_COLORS.red
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(-4, -3)
+  ctx.bezierCurveTo(0, -1, 4, -1, 7, -4)
+  ctx.stroke()
+
+  ctx.fillStyle = MAHJONG_MARK_COLORS.blue
+  ctx.beginPath()
+  ctx.arc(5, -7, 1.3, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.fillStyle = '#c99a24'
+  ctx.beginPath()
+  ctx.moveTo(9, -5)
+  ctx.lineTo(14, -3)
+  ctx.lineTo(9, -1)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.strokeStyle = MAHJONG_MARK_COLORS.red
+  ctx.lineWidth = 1.6
+  ctx.beginPath()
+  ctx.moveTo(-1, 12)
+  ctx.lineTo(-5, 16)
+  ctx.moveTo(-1, 12)
+  ctx.lineTo(3, 16)
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawMahjongBambooFace(
+  ctx: CanvasRenderingContext2D,
+  marks: readonly FaceMark[]
+) {
+  if (marks.length === 1) {
+    drawMahjongBirdFace(ctx, marks[0])
+    return
+  }
+
+  const height = marks.length >= 8 ? 7 : marks.length >= 6 ? 8 : 10
+  marks.forEach(faceMark => {
+    const x = faceMark.x * 40
+    const y = faceMark.y * 54
+    ctx.save()
+    ctx.translate(x, y)
+    if (faceMark.rotation) ctx.rotate(faceMark.rotation * Math.PI / 180)
+    roundedRect(ctx, -1.8, -height / 2, 3.6, height, 1.8)
+    ctx.fillStyle = MAHJONG_MARK_COLORS[faceMark.color]
+    ctx.fill()
+
+    ctx.beginPath()
+    ctx.moveTo(-3, 0)
+    ctx.lineTo(3, 0)
+    ctx.strokeStyle = '#f5d56a'
+    ctx.lineWidth = 1.2
+    ctx.lineCap = 'round'
+    ctx.stroke()
+    ctx.restore()
+  })
+}
+
+function drawMahjongFace(
+  ctx: CanvasRenderingContext2D,
+  tile: Pick<MahjongNumberTile, 'suit' | 'rank'>
+) {
+  if (tile.suit === 'characters') {
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.font = "800 18px KaiTi, STKaiti, 'Songti SC', serif"
+    ctx.fillStyle = '#18212b'
+    ctx.fillText(MAHJONG_CHARACTER_NUMERALS[tile.rank], 20, 18)
+    ctx.fillStyle = MAHJONG_MARK_COLORS.red
+    ctx.fillText('萬', 20, 39)
+    return
+  }
+
+  if (tile.suit === 'dots') {
+    drawMahjongDotFace(ctx, tile.rank, MAHJONG_DOT_LAYOUTS[tile.rank])
+    return
+  }
+
+  drawMahjongBambooFace(ctx, MAHJONG_BAMBOO_LAYOUTS[tile.rank])
+}
+
+function drawMahjongTileBody(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  height: number,
+  tile: Pick<MahjongNumberTile, 'suit' | 'rank'>
+) {
+  const width = height * MAHJONG_TILE_ASPECT_RATIO
+
+  ctx.save()
+  ctx.translate(centerX - width / 2, centerY - height / 2)
+  ctx.scale(width / 40, height / 54)
+  ctx.shadowColor = 'rgba(48, 39, 24, 0.28)'
+  ctx.shadowBlur = 4
+  ctx.shadowOffsetY = 2
+  roundedRect(ctx, 1, 3, 38, 50, 5)
+  ctx.fillStyle = '#b8b9ad'
+  ctx.fill()
+
+  ctx.shadowBlur = 0
+  ctx.shadowOffsetY = 0
+  roundedRect(ctx, 1, 1, 38, 49, 5)
+  ctx.fillStyle = '#f7f1df'
+  ctx.strokeStyle = '#6c6a60'
+  ctx.lineWidth = 1.4
+  ctx.fill()
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(5, 5)
+  ctx.lineTo(35, 5)
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.82)'
+  ctx.lineWidth = 1.2
+  ctx.stroke()
+  drawMahjongFace(ctx, tile)
+  ctx.restore()
+}
+
+function drawGreyWallTile(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number
+) {
+  ctx.save()
+  roundedRect(ctx, centerX - width / 2, centerY - height / 2, width, height, 3)
+  ctx.fillStyle = '#a9aaa5'
+  ctx.strokeStyle = '#5c5d59'
+  ctx.lineWidth = 1.2
+  ctx.shadowColor = 'rgba(48, 39, 24, 0.26)'
+  ctx.shadowBlur = 3
+  ctx.shadowOffsetY = 2
+  ctx.fill()
+  ctx.stroke()
+  ctx.shadowBlur = 0
+  ctx.shadowOffsetY = 0
+  ctx.beginPath()
+  ctx.moveTo(centerX - width / 2 + 3, centerY - height / 2 + 3)
+  ctx.lineTo(centerX + width / 2 - 3, centerY - height / 2 + 3)
+  ctx.strokeStyle = 'rgba(244, 244, 237, 0.66)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawMahjongWall(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  tile: Pick<MahjongNumberTile, 'suit' | 'rank'>
+) {
+  // 两张灰色叠牌构成紧凑牌墙轮廓，前方牌面继续显示被锁住的实体牌。
+  drawGreyWallTile(ctx, centerX - 7, centerY + 3, 18, 25)
+  drawGreyWallTile(ctx, centerX + 7, centerY + 3, 18, 25)
+  drawMahjongTileBody(ctx, centerX, centerY - 2, MAHJONG_WALL_FACE_HEIGHT, tile)
+}
+
+function drawMahjongTileBack(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number
+) {
+  const height = 26
+  const width = height * MAHJONG_TILE_ASPECT_RATIO
+  const left = centerX - width / 2
+  const top = centerY - height / 2
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(21, 28, 49, 0.35)'
+  ctx.shadowBlur = 4
+  ctx.shadowOffsetY = 2
+  roundedRect(ctx, left, top + 2, width, height, 3)
+  ctx.fillStyle = '#202b49'
+  ctx.fill()
+
+  ctx.shadowBlur = 0
+  ctx.shadowOffsetY = 0
+  roundedRect(ctx, left, top, width, height - 2, 3)
+  ctx.fillStyle = '#142b54'
+  ctx.strokeStyle = '#07152e'
+  ctx.lineWidth = 1.2
+  ctx.fill()
+  ctx.stroke()
+  roundedRect(ctx, left + 3, top + 3, width - 6, height - 8, 1.5)
+  ctx.strokeStyle = '#8091b2'
+  ctx.lineWidth = 0.8
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(centerX, top + 5)
+  ctx.lineTo(left + width - 4, centerY - 1)
+  ctx.lineTo(centerX, top + height - 5)
+  ctx.lineTo(left + 4, centerY - 1)
+  ctx.closePath()
+  ctx.strokeStyle = '#395681'
+  ctx.stroke()
+  ctx.restore()
 }
 
 function drawGrid(
@@ -206,6 +493,10 @@ function drawObstacles(
     row.forEach(cell => {
       if (cell.type !== 'obstacle') return
       const { x, y } = cellCenter(cell.row, cell.col)
+      if (cell.mahjongTile) {
+        drawMahjongWall(ctx, x, y, cell.mahjongTile)
+        return
+      }
       drawSprite(
         ctx,
         resolveImage(getObstacleSpriteUrl(cell.row, cell.col)),
@@ -222,6 +513,23 @@ function drawTower(
   tower: Tower,
   resolveImage: SpriteResolver
 ) {
+  if (tower.mahjongTile) {
+    const qualityScale = {
+      chipped: 0.92,
+      flawed: 0.96,
+      normal: 1,
+      flawless: 1.04
+    }[tower.level]
+    drawMahjongTileBody(
+      ctx,
+      tower.position.x,
+      tower.position.y,
+      MAHJONG_TOWER_HEIGHT * qualityScale,
+      tower.mahjongTile
+    )
+    return
+  }
+
   const spriteUrl = getTowerSpriteUrl(tower)
   if (!spriteUrl) return
 
@@ -262,38 +570,8 @@ function drawPlacementPreview(
   ctx.stroke()
   ctx.setLineDash([])
 
-  // 候选格只表达“这里会被占用”，不使用任何塔或障碍素材，
-  // 避免玩家把预览轮廓误认为即将生成的宝石种类或品质。
-  ctx.translate(center.x, center.y + 1)
-  ctx.shadowColor = 'rgba(54, 52, 48, 0.32)'
-  ctx.shadowBlur = 4
-  ctx.fillStyle = 'rgba(70, 68, 63, 0.22)'
-  ctx.beginPath()
-  ctx.ellipse(0, 10, 13, 4, 0, 0, Math.PI * 2)
-  ctx.fill()
-
-  const blocks = [
-    { x: -13, y: -2, width: 12, height: 11 },
-    { x: 1, y: -2, width: 12, height: 11 },
-    { x: -7, y: -12, width: 14, height: 10 }
-  ]
-  blocks.forEach(block => {
-    roundedRect(ctx, block.x, block.y, block.width, block.height, 3)
-    ctx.fillStyle = '#aaa69d'
-    ctx.strokeStyle = '#66635d'
-    ctx.lineWidth = 1.2
-    ctx.fill()
-    ctx.stroke()
-
-    ctx.beginPath()
-    ctx.moveTo(block.x + 2.5, block.y + 2.5)
-    ctx.lineTo(block.x + block.width - 2.5, block.y + 2.5)
-    ctx.strokeStyle = 'rgba(249, 246, 237, 0.72)'
-    ctx.lineWidth = 1
-    ctx.stroke()
-  })
-
-  ctx.translate(-center.x, -center.y - 1)
+  // 未落地前只显示统一深蓝牌背，不泄露具体花色或点数。
+  drawMahjongTileBack(ctx, center.x, center.y + 1)
   ctx.shadowColor = style.stroke
   ctx.shadowBlur = 4
   ctx.fillStyle = style.stroke

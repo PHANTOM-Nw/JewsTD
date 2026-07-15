@@ -61,6 +61,7 @@ export function getCompletedWaveForNotice(
 ): number | null {
   const isPreparationPhase = gameStatus === 'building'
     || gameStatus === 'deciding'
+    || gameStatus === 'resolving_hand'
     || gameStatus === 'ready'
 
   if (

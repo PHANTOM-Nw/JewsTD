@@ -7,6 +7,7 @@ export interface Position {
 export type GameStatus =
   | 'building'
   | 'deciding'
+  | 'resolving_hand'
   | 'ready'
   | 'playing'
   | 'paused'
@@ -14,6 +15,32 @@ export type GameStatus =
   | 'victory'
 
 export type EnemyType = 'basic' | 'fast' | 'tank' | 'boss'
+
+export type MahjongSuit = 'characters' | 'bamboo' | 'dots'
+export type MahjongRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+export type MahjongHonor = 'red' | 'green' | 'white'
+
+/** 108 张实体数牌中的一张；copy 用于区分同牌面的四个实体。 */
+export interface MahjongNumberTile {
+  id: string
+  suit: MahjongSuit
+  rank: MahjongRank
+  copy: 1 | 2 | 3 | 4
+}
+
+export interface MahjongRoundTile {
+  id: string
+  source: 'draw' | 'hand'
+  tile: MahjongNumberTile
+}
+
+/** UI 只拿到当前规则允许公开的信息，暗牌不会泄露点数或花色。 */
+export interface MahjongRoundTileView {
+  id: string
+  source: MahjongRoundTile['source']
+  visibility: 'hidden' | 'suit'
+  suit?: MahjongSuit
+}
 
 // 宝石塔类型 - 8种基础宝石
 export type GemType = 
@@ -73,6 +100,7 @@ export interface Tower {
   id: string
   gemType?: GemType           // 基础宝石类型
   specialType?: SpecialTowerType  // 特殊塔类型
+  mahjongTile?: MahjongNumberTile // 麻将玩法中的准确实体牌面
   level: GemLevel             // 等级
   gridPosition: { row: number; col: number }
   position: Position
@@ -149,6 +177,7 @@ export interface GridCell {
   col: number
   type: 'empty' | 'tower' | 'obstacle' | 'mine' | 'start' | 'end'
   towerId?: string  // 如果有塔,记录塔的ID
+  mahjongTile?: MahjongNumberTile // 牌墙保留被锁住的实体牌身份
 }
 
 // 波次敌人配置
@@ -194,4 +223,10 @@ export interface UIState {
   gameStatus: GameStatus
   canPlaceTowers: boolean
   gameLevel: number  // 游戏等级,影响塔生成概率
+  mahjongPoolCount: number
+  roundTiles: MahjongRoundTileView[]
+  heldTileSuit: MahjongSuit | null
+  functionTiles: MahjongHonor[]
+  canGambleForHonor: boolean
+  lastHonorGamble: 'success' | 'failure' | null
 }

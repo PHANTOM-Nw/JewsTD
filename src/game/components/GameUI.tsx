@@ -2,33 +2,21 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ArrowCounterClockwiseIcon,
-  ArrowFatUpIcon,
   CoinsIcon,
   HammerIcon,
   HeartIcon,
-  ShieldIcon,
+  StackIcon,
   SpeakerHighIcon,
   SpeakerSlashIcon,
   WavesIcon
 } from '@phosphor-icons/react'
-import { calculateUpgradeCost } from '../config/towers'
+import { ECONOMY_CONFIG } from '../config/economy'
 import { WAVES } from '../config/waves'
 import { soundManager } from '../services/audio'
-import type { GameStatus } from '../types/game'
+import type { UIState } from '../types/game'
 
 interface GameUIProps {
-  uiState: {
-    wood: number
-    gold: number
-    mineHealth: number
-    maxMineHealth: number
-    wave: number
-    gameStatus: GameStatus
-    selectedGem: string | null
-    canPlaceTowers: boolean
-    gameLevel: number
-  }
-  onUpgradeGameLevel?: () => void
+  uiState: UIState
   onResetGame: () => void
 }
 
@@ -55,13 +43,9 @@ function ResourceCard({ className, label, value, icon, action }: ResourceCardPro
 
 export function GameUI({
   uiState,
-  onUpgradeGameLevel,
   onResetGame
 }: GameUIProps) {
   const [soundEnabled, setSoundEnabled] = useState(true)
-  const isPreparation = uiState.gameStatus === 'building' || uiState.gameStatus === 'ready'
-  const upgradeCost = calculateUpgradeCost(uiState.gameLevel)
-  const canUpgrade = Boolean(onUpgradeGameLevel) && isPreparation && uiState.gold >= upgradeCost
 
   const toggleSound = () => {
     const nextValue = !soundEnabled
@@ -74,8 +58,8 @@ export function GameUI({
       <div className="game-ui__resources">
         <ResourceCard
           className="game-ui__resource--wood"
-          label="剩余建造"
-          value={uiState.wood}
+          label="建造"
+          value={`${ECONOMY_CONFIG.towersPerRound - uiState.wood}/${ECONOMY_CONFIG.towersPerRound}`}
           icon={<HammerIcon weight="duotone" />}
         />
         <ResourceCard
@@ -98,21 +82,9 @@ export function GameUI({
         />
         <ResourceCard
           className="game-ui__resource--level"
-          label="等级"
-          value={`Lv.${uiState.gameLevel}`}
-          icon={<ShieldIcon weight="duotone" />}
-          action={onUpgradeGameLevel ? (
-            <button
-              className="game-ui__mini-action"
-              type="button"
-              onClick={onUpgradeGameLevel}
-              disabled={!canUpgrade}
-              aria-label={`提升游戏等级，需要${upgradeCost}金币`}
-              title={`升级：${upgradeCost}金币`}
-            >
-              <ArrowFatUpIcon weight="bold" />
-            </button>
-          ) : null}
+          label="牌池"
+          value={uiState.mahjongPoolCount}
+          icon={<StackIcon weight="duotone" />}
         />
       </div>
 
@@ -140,8 +112,8 @@ export function GameUI({
       </div>
 
       <p className="sr-only" aria-live="polite">
-        剩余建造{uiState.wood}次，金币{uiState.gold}，矿坑生命{uiState.mineHealth}，
-        第{uiState.wave}波，游戏等级{uiState.gameLevel}。
+        本轮已建造{ECONOMY_CONFIG.towersPerRound - uiState.wood}次，金币{uiState.gold}，矿坑生命{uiState.mineHealth}，
+        第{uiState.wave}波，可摸牌池剩余{uiState.mahjongPoolCount}张。
       </p>
     </header>
   )

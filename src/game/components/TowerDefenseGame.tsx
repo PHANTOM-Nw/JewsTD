@@ -1,133 +1,144 @@
-import React, { useState, useCallback } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useGameEngine } from '../engine/useGameEngine'
 import { GameCanvas } from './GameCanvas'
 import { GameUI } from './GameUI'
 import { BuildPanel } from './BuildPanel'
-import { SynthesisDialog } from './SynthesisDialog'
+import { MahjongTile } from './MahjongTile'
 import { WaveCompletionNotice } from './WaveCompletionNotice'
-import type { GemLevel, GemType, Tower } from '../types/game'
-import { GEM_NAMES, LEVEL_NAMES } from '../config/towers'
+import type { Tower } from '../types/game'
+import { getMahjongTileName } from '../config/mahjong'
+import { MAP_CONFIG } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
-import { canInspectSynthesisFromTower, canSynthesizeTowers } from '../engine/gameFlow'
-import { getTowerSpriteUrl } from '../rendering/spriteRegistry'
+import { screenPointToGrid } from './canvasPointer'
 import './TowerDefenseGame.css'
+
+interface ActiveTileDrag {
+  tileId: string
+  pointerId: number
+}
 
 export const TowerDefenseGame: React.FC = () => {
   const {
     uiState,
     gameStateRef,
+    selectRoundTile,
     previewTowerPlacement,
     clearPlacementPreview,
     placeTower,
-    removeObstacle,
     finalizeTowers,
-    synthesizeTowers,
-    synthesizeSpecialTower,  // 新增
-    upgradeGameLevel,  // ✅ 新增: 升级游戏等级
+    keepMahjongHand,
+    gambleForMahjongHonor,
     startWave,
     pause,
     resume,
     resetGame
   } = useGameEngine()
-  
-  // 跟踪当前批次放置的塔
+
   const [currentBatchTowers, setCurrentBatchTowers] = useState<string[]>([])
   const [selectedTowerForDecision, setSelectedTowerForDecision] = useState<Tower | null>(null)
-  const [showSynthesisDialog, setShowSynthesisDialog] = useState(false)
-  const [selectedTowerForSynthesisId, setSelectedTowerForSynthesisId] = useState<string | null>(null)
+  const [activeTileDrag, setActiveTileDrag] = useState<ActiveTileDrag | null>(null)
 
-  // 辅助函数:获取宝石名称
-  const getGemName = (gemType: GemType): string => {
-    return GEM_NAMES[gemType]
-  }
+  const clientPointToGrid = useCallback((clientX: number, clientY: number) => {
+    const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    return screenPointToGrid(
+      clientX,
+      clientY,
+      {
+        left: rect.left + canvas.clientLeft,
+        top: rect.top + canvas.clientTop,
+        width: canvas.clientWidth,
+        height: canvas.clientHeight
+      },
+      MAP_CONFIG.cols * MAP_CONFIG.cellSize,
+      MAP_CONFIG.rows * MAP_CONFIG.cellSize
+    )
+  }, [])
 
-  // 辅助函数:获取等级名称
-  const getLevelName = (level: GemLevel): string => {
-    return LEVEL_NAMES[level]
+  const recordPlacedTower = useCallback((tower: Tower) => {
+    setCurrentBatchTowers(previous => [...previous, tower.id])
+    const batchIds = gameStateRef.current.currentBatchTowerIds
+    if (batchIds.length >= ECONOMY_CONFIG.towersPerRound) {
+      const firstTower = gameStateRef.current.towers.find(candidate => candidate.id === batchIds[0])
+      if (firstTower) setSelectedTowerForDecision(firstTower)
+    }
+  }, [gameStateRef])
+
+  useEffect(() => {
+    if (!activeTileDrag) return
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== activeTileDrag.pointerId) return
+      event.preventDefault()
+      const gridPosition = clientPointToGrid(event.clientX, event.clientY)
+      if (gridPosition) previewTowerPlacement(gridPosition, activeTileDrag.tileId)
+      else clearPlacementPreview()
+    }
+
+    const finishDrag = (event: PointerEvent, cancelled: boolean) => {
+      if (event.pointerId !== activeTileDrag.pointerId) return
+      const gridPosition = cancelled ? null : clientPointToGrid(event.clientX, event.clientY)
+      clearPlacementPreview()
+      if (gridPosition) {
+        const tower = placeTower(gridPosition, activeTileDrag.tileId)
+        if (tower) recordPlacedTower(tower)
+      }
+      setActiveTileDrag(null)
+      selectRoundTile(null)
+    }
+
+    const handlePointerUp = (event: PointerEvent) => finishDrag(event, false)
+    const handlePointerCancel = (event: PointerEvent) => finishDrag(event, true)
+    const handleWindowBlur = () => {
+      clearPlacementPreview()
+      setActiveTileDrag(null)
+      selectRoundTile(null)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false })
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerCancel)
+    window.addEventListener('blur', handleWindowBlur)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerCancel)
+      window.removeEventListener('blur', handleWindowBlur)
+    }
+  }, [
+    activeTileDrag,
+    clearPlacementPreview,
+    clientPointToGrid,
+    placeTower,
+    previewTowerPlacement,
+    recordPlacedTower,
+    selectRoundTile
+  ])
+
+  const beginTileDrag = (tileId: string, pointerId: number) => {
+    if (uiState.gameStatus !== 'building' || !selectRoundTile(tileId)) return
+    setActiveTileDrag({ tileId, pointerId })
   }
 
   const handleCanvasClick = useCallback((gridPos: { row: number; col: number }) => {
     const { grid, towers } = gameStateRef.current
-    
-    // 检查点击的位置是否有塔或障碍物
     const cell = grid[gridPos.row]?.[gridPos.col]
     if (!cell) return
-    
-    if (cell.type === 'tower') {
-      // 点击的是已有塔 - 现有逻辑保持不变
-      const existingTower = towers.find(t => t.id === cell.towerId)
-      
-      if (existingTower) {
-        const isCurrentBatch = gameStateRef.current.currentBatchTowerIds.includes(existingTower.id)
-        
-        if (isCurrentBatch && uiState.gameStatus === 'deciding') {
-          setSelectedTowerForDecision(existingTower)
-        } else if (
-          canInspectSynthesisFromTower(uiState.gameStatus)
-          && gameStateRef.current.storedTowers.some(tower => tower.id === existingTower.id)
-        ) {
-          setSelectedTowerForSynthesisId(existingTower.id)
-          setShowSynthesisDialog(true)
-        }
-        
-        return
-      }
-    }
-    
-    // 点击障碍物,消耗金币删除
-    if (cell.type === 'obstacle') {
-      if (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') {
-        return
-      }
 
-      if (uiState.gold < ECONOMY_CONFIG.obstacleRemovalGoldCost) {
-        alert(`需要${ECONOMY_CONFIG.obstacleRemovalGoldCost}金币才能删除障碍物!`)
-        return
+    if (cell.type === 'tower') {
+      const existingTower = towers.find(tower => tower.id === cell.towerId)
+      if (
+        existingTower
+        && uiState.gameStatus === 'deciding'
+        && gameStateRef.current.currentBatchTowerIds.includes(existingTower.id)
+      ) {
+        setSelectedTowerForDecision(existingTower)
       }
-      
-      removeObstacle(gridPos)
       return
     }
-    
-    // 点击空地,执行放置逻辑
-    if (uiState.gameStatus !== 'building') return
-    if (!uiState.canPlaceTowers) {
-      console.warn('当前波次中不能放置塔')
-      return
-    }
-    
-    // 检查是否还有剩余建造次数
-    if (uiState.wood <= 0) {
-      console.warn('剩余建造次数已用完,无法放置新塔')
-      return
-    }
-    
-    const tower = placeTower(gridPos)
-    if (tower) {
-      setCurrentBatchTowers(prev => [...prev, tower.id])
-      
-      // 达到当前配置的批次数量后，自动进入决策模式
-      if (currentBatchTowers.length + 1 >= ECONOMY_CONFIG.towersPerRound) {
-        // 默认选中第一个塔
-        const firstTowerId = currentBatchTowers.length > 0 
-          ? currentBatchTowers[0] 
-          : tower.id
-        const firstTower = gameStateRef.current.towers.find(t => t.id === firstTowerId)
-        if (firstTower) {
-          setSelectedTowerForDecision(firstTower)
-        }
-      }
-    }
-  }, [
-    uiState.gameStatus, 
-    uiState.canPlaceTowers, 
-    uiState.wood,
-    uiState.gold,
-    placeTower, 
-    currentBatchTowers,
-    gameStateRef,
-    removeObstacle
-  ])
+
+  }, [gameStateRef, uiState.gameStatus])
 
   const handleFinalizeTowers = (keepTowerId: string) => {
     if (finalizeTowers(keepTowerId)) {
@@ -136,64 +147,36 @@ export const TowerDefenseGame: React.FC = () => {
     }
   }
 
-  const handleStartWave = () => {
-    startWave()
-  }
-
-  const handlePause = () => {
-    pause()
-  }
-
-  const handleResume = () => {
-    resume()
-  }
-
   const handleResetGame = () => {
     resetGame()
     setCurrentBatchTowers([])
     setSelectedTowerForDecision(null)
-    setShowSynthesisDialog(false)
-    setSelectedTowerForSynthesisId(null)
+    setActiveTileDrag(null)
   }
 
   return (
     <div className="game-shell">
-      <h1 className="game-title">宝石TD</h1>
-      
-      {/* 顶部UI */}
-      <GameUI
-        uiState={uiState}
-        onUpgradeGameLevel={upgradeGameLevel}
-        onResetGame={handleResetGame}
-      />
+      <h1 className="game-title">麻将TD</h1>
 
-      <WaveCompletionNotice
-        gameStatus={uiState.gameStatus}
-        currentWave={uiState.wave}
-      />
-      
-      {/* 游戏主体区域 */}
+      <GameUI uiState={uiState} onResetGame={handleResetGame} />
+
+      <WaveCompletionNotice gameStatus={uiState.gameStatus} currentWave={uiState.wave} />
+
       <div className="game-main">
         <div className="game-board">
-          <GameCanvas
-            onClick={handleCanvasClick}
-            onPlacementPreview={previewTowerPlacement}
-            onPlacementPreviewEnd={clearPlacementPreview}
-          />
-          
-          {/* 决策对话框 */}
-          {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (
+          <GameCanvas onClick={handleCanvasClick} onPlacementPreviewEnd={clearPlacementPreview} />
+
+          {uiState.gameStatus === 'deciding' && selectedTowerForDecision?.mahjongTile && (
             <section className="tower-decision" role="dialog" aria-modal="true" aria-labelledby="tower-decision-title">
               <span className="tower-decision__eyebrow">三选一</span>
-              <h2 id="tower-decision-title">选择要保留的塔</h2>
+              <h2 id="tower-decision-title">选择要激活的牌</h2>
 
               <div className="tower-decision__choices">
                 {currentBatchTowers.map(towerId => {
                   const tower = gameStateRef.current.towers.find(candidate => candidate.id === towerId)
-                  if (!tower?.gemType) return null
-
+                  if (!tower?.mahjongTile) return null
                   const isSelected = tower.id === selectedTowerForDecision.id
-                  const spriteUrl = getTowerSpriteUrl(tower)
+                  const name = getMahjongTileName(tower.mahjongTile)
                   return (
                     <button
                       key={tower.id}
@@ -201,39 +184,28 @@ export const TowerDefenseGame: React.FC = () => {
                       className={`tower-choice${isSelected ? ' tower-choice--selected' : ''}`}
                       onClick={() => setSelectedTowerForDecision(tower)}
                       aria-pressed={isSelected}
-                      aria-label={`${getGemName(tower.gemType)} ${getLevelName(tower.level)}`}
+                      aria-label={`选择${name}作为激活牌`}
                     >
-                      {spriteUrl && <img src={spriteUrl} alt="" />}
-                      <span>{getGemName(tower.gemType)}</span>
+                      <MahjongTile tile={tower.mahjongTile} compact />
+                      <span>{name}</span>
                     </button>
                   )
                 })}
               </div>
 
               <div className="tower-decision__detail">
-                {getTowerSpriteUrl(selectedTowerForDecision) && (
-                  <img src={getTowerSpriteUrl(selectedTowerForDecision)!} alt="" />
-                )}
+                <MahjongTile tile={selectedTowerForDecision.mahjongTile} />
                 <div>
-                  <strong>{getGemName(selectedTowerForDecision.gemType!)}</strong>
-                  <span>{getLevelName(selectedTowerForDecision.level)}</span>
-                  <small>
-                    伤害 {selectedTowerForDecision.damage} · 范围 {selectedTowerForDecision.range} ·
-                    攻速 {selectedTowerForDecision.attackSpeed}ms
-                  </small>
+                  <strong>{getMahjongTileName(selectedTowerForDecision.mahjongTile)}</strong>
+                  <span>激活后保留在场上</span>
+                  <small>基础伤害 {selectedTowerForDecision.damage} · 范围 {selectedTowerForDecision.range} · 攻速 {selectedTowerForDecision.attackSpeed}ms</small>
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="tower-decision__confirm"
-                onClick={() => handleFinalizeTowers(selectedTowerForDecision.id)}
-              >
-                保留此塔
+              <button type="button" className="tower-decision__confirm" onClick={() => handleFinalizeTowers(selectedTowerForDecision.id)}>
+                激活此牌
               </button>
-              <p className="tower-decision__hint">
-                其余 {ECONOMY_CONFIG.towersPerRound - 1} 座塔会风化成障碍，敌人的路线将重新计算。
-              </p>
+              <p className="tower-decision__hint">其余 2 张保留完整牌面并原地成为牌墙，继续改变敌人路线。</p>
             </section>
           )}
         </div>
@@ -243,47 +215,33 @@ export const TowerDefenseGame: React.FC = () => {
           gold={uiState.gold}
           placedCount={currentBatchTowers.length}
           gameStatus={uiState.gameStatus}
+          roundTiles={uiState.roundTiles}
+          heldTileSuit={uiState.heldTileSuit}
+          functionTiles={uiState.functionTiles}
+          canGambleForHonor={uiState.canGambleForHonor}
+          lastHonorGamble={uiState.lastHonorGamble}
           currentWave={uiState.wave}
-          onStartWave={handleStartWave}
-          onPause={handlePause}
-          onResume={handleResume}
+          onTilePointerDown={beginTileDrag}
+          onKeepHand={keepMahjongHand}
+          onGambleForHonor={gambleForMahjongHonor}
+          onStartWave={startWave}
+          onPause={pause}
+          onResume={resume}
           onReset={handleResetGame}
         />
       </div>
-      
-      {/* 合成对话框 */}
-      {showSynthesisDialog && selectedTowerForSynthesisId && (
-        <SynthesisDialog
-          fieldTowers={gameStateRef.current.storedTowers}
-          selectedTowerId={selectedTowerForSynthesisId}
-          canSynthesize={canSynthesizeTowers(uiState.gameStatus)}
-          onSynthesize={(id1, id2) => {
-            console.log('尝试合成:', id1, id2)
-            return synthesizeTowers(id1, id2, selectedTowerForSynthesisId)
-          }}
-          onSynthesizeSpecial={(specialType) => {  // 新增
-            console.log('合成特殊塔:', specialType)
-            return synthesizeSpecialTower(specialType, selectedTowerForSynthesisId)
-          }}
-          onClose={() => {
-            setShowSynthesisDialog(false)
-            setSelectedTowerForSynthesisId(null)
-          }}
-        />
-      )}
-      
-      {/* 游戏状态提示 */}
+
       {uiState.gameStatus === 'game_over' && (
         <div className="game-result game-result--over">
           <h2>游戏结束!</h2>
           <p>矿坑生命归零,你坚持了 {uiState.wave} 波</p>
         </div>
       )}
-      
+
       {uiState.gameStatus === 'victory' && (
         <div className="game-result game-result--victory">
           <h2>胜利!</h2>
-          <p>恭喜你完成了所有12波!</p>
+          <p>恭喜你完成了全部 12 波!</p>
         </div>
       )}
     </div>

@@ -146,7 +146,7 @@ export function GameCanvas({
       id="game-canvas"
       className="game-canvas"
       role="img"
-      aria-label="8列10行宝石塔防地图。按住或拖动空格预览落塔后的路线，松开建塔；点击塔查看合成，备战时点击障碍可清除。"
+      aria-label="8列10行麻将塔防地图。从下方牌槽拖动暗牌到空格，落地立即翻牌；牌墙会持续占据格子。"
       tabIndex={0}
       onBlur={() => endPlacementPreview(true)}
       onContextMenu={event => event.preventDefault()}

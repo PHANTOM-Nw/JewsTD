@@ -56,6 +56,7 @@ describe('build and wave flow', () => {
     expect(canInspectSynthesisFromTower('playing')).toBe(true)
     expect(canInspectSynthesisFromTower('paused')).toBe(true)
     expect(canInspectSynthesisFromTower('deciding')).toBe(false)
+    expect(canInspectSynthesisFromTower('resolving_hand')).toBe(false)
     expect(canInspectSynthesisFromTower('game_over')).toBe(false)
     expect(canInspectSynthesisFromTower('victory')).toBe(false)
   })
@@ -63,6 +64,7 @@ describe('build and wave flow', () => {
   it('keeps synthesis actions locked while a wave is active', () => {
     expect(canSynthesizeTowers('building')).toBe(true)
     expect(canSynthesizeTowers('ready')).toBe(true)
+    expect(canSynthesizeTowers('resolving_hand')).toBe(false)
     expect(canSynthesizeTowers('playing')).toBe(false)
     expect(canSynthesizeTowers('paused')).toBe(false)
   })
@@ -76,6 +78,7 @@ describe('build and wave flow', () => {
     expect(getCompletedWaveForNotice('building', 0, 12)).toBeNull()
     expect(getCompletedWaveForNotice('building', 1, 12)).toBe(1)
     expect(getCompletedWaveForNotice('deciding', 1, 12)).toBe(1)
+    expect(getCompletedWaveForNotice('resolving_hand', 1, 12)).toBe(1)
     expect(getCompletedWaveForNotice('ready', 1, 12)).toBe(1)
     expect(getCompletedWaveForNotice('playing', 1, 12)).toBeNull()
     expect(getCompletedWaveForNotice('paused', 1, 12)).toBeNull()

@@ -206,7 +206,8 @@ export function recycleOldestObstacles(
     nextGrid[oldestObstacle.row][oldestObstacle.col] = {
       ...cell,
       type: 'empty',
-      towerId: undefined
+      towerId: undefined,
+      mahjongTile: undefined
     }
     removedPositions.push(oldestObstacle)
     path = calculateConfiguredPath(nextGrid)

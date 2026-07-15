@@ -7,18 +7,26 @@ import type {
   Bullet,
   GridCell,
   GemType,
-  GemLevel,
-  SpecialTowerType,
+  MahjongHonor,
+  MahjongNumberTile,
+  MahjongRoundTile,
   DamageNumber,
   DamageNumberType,
   PlacementPreview,
   UIState
 } from '../types/game'
-import { getTowerStats, randomizeTowerLevel, calculateUpgradeCost, getTowerLevelProbabilities } from '../config/towers'
 import { createEnemy, ENEMY_TYPES } from '../config/enemies'
 import { WAVES } from '../config/waves'
 import { initializeGrid, gridToPixel } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
+import {
+  MAHJONG_BASE_TOWER_STATS,
+  beginMahjongRound,
+  canGambleForMahjongHonor,
+  createMahjongTilePool,
+  resolveMahjongHonorGamble,
+  toMahjongRoundTileViews
+} from '../config/mahjong'
 import { soundManager, type SoundType } from '../services/audio'
 import {
   canFinalizeTowerBatch,
@@ -38,15 +46,9 @@ import {
   selectTowerTargets
 } from './combat'
 import {
-  createSpecialTowerAtAnchor,
-  createUpgradedTowerAtAnchor,
-  findSpecialSynthesisMaterials
-} from './synthesis'
-import {
   createBatchPlacementPreview,
   evaluateBatchPlacement,
   getRemainingBatchPlacements,
-  recycleOldestObstacles,
   type GridPosition
 } from './building'
 import { renderGameScene } from '../rendering/canvasRenderer'
@@ -68,6 +70,13 @@ interface EngineUiState extends UIState {
   availableGems: GemType[]
 }
 
+interface MahjongRuntimeState {
+  pool: MahjongNumberTile[]
+  roundTiles: MahjongRoundTile[]
+  heldTile: MahjongNumberTile | null
+  functionTiles: MahjongHonor[]
+}
+
 interface EngineState {
   enemies: Enemy[]
   towers: Tower[]
@@ -86,9 +95,41 @@ interface EngineState {
   currentBatchTowerIds: string[]
   currentHealthMultiplier: number
   obstacleOrder: GridPosition[]
+  mahjong: MahjongRuntimeState
 }
 
-function createInitialUiState(): EngineUiState {
+function createInitialMahjongState(): MahjongRuntimeState {
+  const firstRound = beginMahjongRound(createMahjongTilePool(), null)
+  return {
+    pool: firstRound.pool,
+    roundTiles: firstRound.roundTiles,
+    heldTile: null,
+    functionTiles: []
+  }
+}
+
+function createMahjongUiState(
+  mahjong: MahjongRuntimeState,
+  revealDrawnSuits = false
+): Pick<EngineUiState,
+  | 'mahjongPoolCount'
+  | 'roundTiles'
+  | 'heldTileSuit'
+  | 'functionTiles'
+  | 'canGambleForHonor'
+  | 'lastHonorGamble'
+> {
+  return {
+    mahjongPoolCount: mahjong.pool.length,
+    roundTiles: toMahjongRoundTileViews(mahjong.roundTiles, revealDrawnSuits),
+    heldTileSuit: mahjong.heldTile?.suit ?? null,
+    functionTiles: [...mahjong.functionTiles],
+    canGambleForHonor: revealDrawnSuits && canGambleForMahjongHonor(mahjong.roundTiles),
+    lastHonorGamble: null
+  }
+}
+
+function createInitialUiState(mahjong: MahjongRuntimeState): EngineUiState {
   return {
     wood: ECONOMY_CONFIG.startingWood,
     gold: ECONOMY_CONFIG.startingGold,
@@ -99,7 +140,8 @@ function createInitialUiState(): EngineUiState {
     selectedGem: null,
     availableGems: [],
     canPlaceTowers: true,
-    gameLevel: 1
+    gameLevel: 1,
+    ...createMahjongUiState(mahjong)
   }
 }
 
@@ -108,7 +150,7 @@ function createInitialUiState(): EngineUiState {
  * 
  * 整合所有游戏系统,包括:
  * - 资源管理(建造次数、金币、矿坑生命)
- * - 塔的放置、合成、升级
+ * - 麻将牌池、拖拽建造、激活与留牌
  * - 敌人生成和移动
  * - 战斗系统(攻击、伤害计算、子弹追踪)
  * - 波次管理
@@ -119,11 +161,9 @@ function createInitialUiState(): EngineUiState {
  * const {
  *   uiState,
  *   gameStateRef,
- *   selectGem,
  *   placeTower,
- *   decideKeepTower,
- *   decideBecomeObstacle,
- *   synthesizeTowers,
+ *   finalizeTowers,
+ *   keepMahjongHand,
  *   startWave,
  *   pause, resume, resetGame
  * } = useGameEngine()
@@ -134,7 +174,14 @@ export function useGameEngine() {
   const { calculatePath } = usePathfinding()
   
   // ==================== UI状态(触发重渲染) ====================
-  const [uiState, setUiState] = useState<EngineUiState>(createInitialUiState)
+  const initialMahjongStateRef = useRef<MahjongRuntimeState | null>(null)
+  if (!initialMahjongStateRef.current) {
+    initialMahjongStateRef.current = createInitialMahjongState()
+  }
+
+  const [uiState, setUiState] = useState<EngineUiState>(() => (
+    createInitialUiState(initialMahjongStateRef.current!)
+  ))
   const [hasActiveDamageNumbers, setHasActiveDamageNumbers] = useState(false)
   
   // ==================== 游戏对象状态(不触发重渲染,高频更新) ====================
@@ -158,47 +205,40 @@ export function useGameEngine() {
       gameTime: 0,
       currentBatchTowerIds: [],
       currentHealthMultiplier: 1,
-      obstacleOrder: []
+      obstacleOrder: [],
+      mahjong: initialMahjongStateRef.current
     }
   }
 
-  const ageObstacles = useCallback((requiredSafeBuildCells: number) => {
-    const state = gameStateRef.current
-    const result = recycleOldestObstacles(
-      state.grid,
-      state.obstacleOrder,
-      ECONOMY_CONFIG.maxObstacles,
-      requiredSafeBuildCells
-    )
-
-    state.grid = result.grid
-    state.obstacleOrder = result.obstacleOrder
-    state.currentPath = result.path
-    state.placementPreview = null
-    return result.hasCapacity
-  }, [])
-  
   // ==================== 核心方法 ====================
-  
-  /**
-   * 选择宝石类型
-   * @param gemType - 要选择的宝石类型
-   */
-  const selectGem = useCallback((gemType: GemType) => {
-    setUiState(prev => ({ ...prev, selectedGem: gemType }))
-  }, [])
 
   const clearPlacementPreview = useCallback(() => {
     gameStateRef.current.placementPreview = null
   }, [])
 
-  const previewTowerPlacement = useCallback((gridPos: GridPosition) => {
+  const selectRoundTile = useCallback((tileId: string | null) => {
+    if (
+      tileId !== null
+      && !gameStateRef.current.mahjong.roundTiles.some(resource => resource.id === tileId)
+    ) {
+      return false
+    }
+    setUiState(prev => ({ ...prev, selectedGem: null }))
+    return true
+  }, [])
+
+  const previewTowerPlacement = useCallback((
+    gridPos: GridPosition,
+    tileId?: string
+  ) => {
     const state = gameStateRef.current
     if (
       uiState.gameStatus !== 'building'
       || !uiState.canPlaceTowers
       || uiState.wood < ECONOMY_CONFIG.towerWoodCost
       || state.currentBatchTowerIds.length >= ECONOMY_CONFIG.towersPerRound
+      || !tileId
+      || !state.mahjong.roundTiles.some(resource => resource.id === tileId)
     ) {
       state.placementPreview = null
       return null
@@ -217,18 +257,11 @@ export function useGameEngine() {
     return preview
   }, [uiState.canPlaceTowers, uiState.gameStatus, uiState.wood])
   
-  /**
-   * 放置塔到指定位置(随机生成宝石)
-   * 
-   * 原版宝石TD玩法:
-   * 1. 点击地图格子,随机生成1个宝石塔
-   * 2. 每次占用1次本轮建造
-   * 3. 达到本轮配置的建造数量后进入决策阶段
-   * 
-   * @param gridPos - 格子坐标 {row, col}
-   * @returns 新创建的塔,如果放置失败则返回undefined
-   */
-  const placeTower = useCallback((gridPos: { row: number; col: number }) => {
+  /** 将牌槽中的指定实体牌放到合法格，并立即以准确牌面翻开。 */
+  const placeTower = useCallback((
+    gridPos: { row: number; col: number },
+    tileId?: string
+  ) => {
     gameStateRef.current.placementPreview = null
 
     if (uiState.gameStatus !== 'building' || !uiState.canPlaceTowers) {
@@ -242,6 +275,14 @@ export function useGameEngine() {
     }
 
     if (gameStateRef.current.currentBatchTowerIds.length >= ECONOMY_CONFIG.towersPerRound) {
+      return null
+    }
+
+    const tileResource = gameStateRef.current.mahjong.roundTiles.find(
+      resource => resource.id === tileId
+    )
+    if (!tileResource) {
+      console.warn('请从牌槽拖动一张暗牌到地图')
       return null
     }
     
@@ -268,27 +309,19 @@ export function useGameEngine() {
 
     if (!placementResult.canPlace) {
       alert(placementResult.failure === 'insufficient_capacity'
-        ? '这里会让本轮剩余宝石没有足够的安全位置!'
+        ? '这里会让本轮剩余麻将牌没有足够的安全位置!'
         : '不能堵死路径!')
       return null
     }
-    
-    // 随机选择一个宝石类型(8种基础宝石)
-    const gemTypes: GemType[] = ['amethyst', 'diamond', 'topaz', 'opal', 'ruby', 'sapphire', 'emerald', 'obsidian']
-    const randomIndex = Math.floor(Math.random() * gemTypes.length)
-    const randomGemType = gemTypes[randomIndex]
-    
-    // ✅ 新增: 根据游戏等级随机生成塔等级
-    const randomLevel = randomizeTowerLevel(uiState.gameLevel)
-    
-    // 创建塔
-    const stats = getTowerStats(randomGemType, randomLevel)
+
+    // 数牌战斗定位仍在产品方案的待定模块中；首版统一使用中性基础参数。
+    const stats = MAHJONG_BASE_TOWER_STATS
     const pixelPos = gridToPixel(gridPos.row, gridPos.col)
     
     const newTower: Tower = {
       id: `tower_${Date.now()}_${Math.random()}`,
-      gemType: randomGemType,
-      level: randomLevel,  // ✅ 使用随机等级
+      mahjongTile: tileResource.tile,
+      level: 'chipped',
       gridPosition: gridPos,
       position: pixelPos,
       damage: stats.damage,
@@ -296,22 +329,15 @@ export function useGameEngine() {
       attackSpeed: stats.attackSpeed,
       lastAttackTime: 0,
       damageType: stats.damageType,
-      critChance: stats.critChance,
-      critMultiplier: stats.critMultiplier,
-      multiTarget: stats.multiTarget,
-      splashRadius: stats.splashRadius,
-      slowEffect: stats.slowEffect,
-      poisonDamage: stats.poisonDamage,
-      poisonDuration: stats.poisonDuration,
-      stunChance: stats.stunChance,
-      stunDuration: stats.stunDuration,
-      pierce: stats.pierce
     }
     
     // 添加到地图(标记为临时塔)
     gameStateRef.current.towers.push(newTower)
     
     gameStateRef.current.currentBatchTowerIds.push(newTower.id)
+    gameStateRef.current.mahjong.roundTiles = gameStateRef.current.mahjong.roundTiles.filter(
+      resource => resource.id !== tileResource.id
+    )
     const nextBuildState = getStatusAfterPlacement(
       gameStateRef.current.currentBatchTowerIds.length,
       ECONOMY_CONFIG.towersPerRound
@@ -319,62 +345,25 @@ export function useGameEngine() {
     setUiState(prev => ({
       ...prev,
       wood: prev.wood - ECONOMY_CONFIG.towerWoodCost,
+      ...createMahjongUiState(gameStateRef.current.mahjong),
       ...nextBuildState
     }))
     
-    // ✅ 修改: 更新格子类型为tower(无论是从empty还是obstacle)
+    // 地图格只记录塔身份；准确牌面由塔实体统一提供。
     grid[gridPos.row][gridPos.col] = {
       ...grid[gridPos.row][gridPos.col],
       type: 'tower',
-      towerId: newTower.id
+      towerId: newTower.id,
+      mahjongTile: undefined
     }
     
     // 重新计算路径
     gameStateRef.current.currentPath = placementResult.path
     
     return newTower
-  }, [uiState.canPlaceTowers, uiState.gameStatus, uiState.wood, uiState.gameLevel])
+  }, [uiState.canPlaceTowers, uiState.gameStatus, uiState.wood])
 
-  /** 删除一个障碍物并消耗金币，不占用本轮配置的建造次数。 */
-  const removeObstacle = useCallback((gridPos: { row: number; col: number }) => {
-    if (
-      (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') ||
-      uiState.gold < ECONOMY_CONFIG.obstacleRemovalGoldCost
-    ) {
-      return false
-    }
-
-    const { grid } = gameStateRef.current
-    const cell = grid[gridPos.row]?.[gridPos.col]
-    if (!cell || cell.type !== 'obstacle') {
-      return false
-    }
-
-    grid[gridPos.row][gridPos.col] = {
-      ...cell,
-      type: 'empty',
-      towerId: undefined
-    }
-    gameStateRef.current.obstacleOrder = gameStateRef.current.obstacleOrder.filter(
-      position => position.row !== gridPos.row || position.col !== gridPos.col
-    )
-    gameStateRef.current.currentPath = calculatePath(grid)
-    setUiState(prev => ({
-      ...prev,
-      gold: prev.gold - ECONOMY_CONFIG.obstacleRemovalGoldCost
-    }))
-    return true
-  }, [calculatePath, uiState.gameStatus, uiState.gold])
-  
-  /**
-   * 批量决定本轮塔的处理方式
-   * 
-   * 原版宝石TD核心玩法:
-   * - 选择1个塔保留在场上
-   * - 其余塔变成障碍物，并进入受上限保护的累计队列
-   * 
-   * @param keepTowerId - 要保留的塔ID
-   */
+  /** 从本轮三张落地牌中激活一张，其余两张原地成为永久牌墙。 */
   const finalizeTowers = useCallback((keepTowerId: string) => {
     const { towers, storedTowers, grid, currentBatchTowerIds } = gameStateRef.current
 
@@ -401,10 +390,10 @@ export function useGameEngine() {
       }
       
       if (tower.id === keepTowerId) {
-        // 保留塔继续留在场上，并加入跨波次合成索引
-        console.log(`保留塔: ${tower.gemType} 在位置 (${tower.gridPosition.row}, ${tower.gridPosition.col})`)
+        // 激活牌继续留在场上，并加入跨波次索引。
+        console.log(`保留激活牌: ${tower.mahjongTile?.id} 在位置 (${tower.gridPosition.row}, ${tower.gridPosition.col})`)
 
-        // 创建副本加入场上保留塔索引（用于合成）
+        // 创建副本加入场上保留塔索引。
         const towerCopy = { ...tower }
         storedTowers.push(towerCopy)
         
@@ -413,7 +402,7 @@ export function useGameEngine() {
         
       } else {
         // 其他塔变成障碍物
-        console.log(`塔变为障碍: ${tower.gemType} 在位置 (${tower.gridPosition.row}, ${tower.gridPosition.col})`)
+        console.log(`数牌变为牌墙: ${tower.mahjongTile?.id} 在位置 (${tower.gridPosition.row}, ${tower.gridPosition.col})`)
         
         const index = towers.findIndex(t => t.id === tower.id)
         if (index !== -1) {
@@ -423,8 +412,9 @@ export function useGameEngine() {
         const { gridPosition } = tower
         grid[gridPosition.row][gridPosition.col] = {
           ...grid[gridPosition.row][gridPosition.col],
-          type: 'obstacle',  // 进入累计障碍队列，超限时最老障碍会风化
-          towerId: undefined
+          type: 'obstacle',
+          towerId: undefined,
+          mahjongTile: tower.mahjongTile
         }
         gameStateRef.current.obstacleOrder.push({ ...gridPosition })
       }
@@ -433,247 +423,67 @@ export function useGameEngine() {
     // 清空当前批次列表
     gameStateRef.current.currentBatchTowerIds = []
     
-    ageObstacles(0)
-
     setUiState(prev => ({
       ...prev,
-      gameStatus: 'ready',
-      canPlaceTowers: false
+      wood: 0,
+      gameStatus: 'resolving_hand',
+      canPlaceTowers: false,
+      ...createMahjongUiState(gameStateRef.current.mahjong, true)
     }))
     
     console.log('最终塔数量:', towers.length, '场上保留塔数量:', storedTowers.length)
     return true
-  }, [ageObstacles, uiState.gameStatus])
-  
-  /**
-   * 合成两个相同类型和等级的塔
-   * 
-   * 合成规则:
-   * - 必须是相同宝石类型
-   * - 必须是相同等级
-   * - 等级提升一级(chipped -> flawed -> normal -> flawless)
-   * - 最高等级无法继续合成
-   * 
-   * @param towerId1 - 第一个材料塔ID
-   * @param towerId2 - 第二个材料塔ID
-   * @param selectedTowerId - 玩家在场上选中的塔ID，也是合成塔的落点
-   */
-  const synthesizeTowers = useCallback((
-    towerId1: string,
-    towerId2: string,
-    selectedTowerId: string
-  ) => {
-    if (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') {
-      return false
-    }
+  }, [uiState.gameStatus])
 
-    if (
-      towerId1 === towerId2
-      || (selectedTowerId !== towerId1 && selectedTowerId !== towerId2)
-    ) {
-      return false
-    }
+  const keepMahjongHand = useCallback((tileId: string) => {
+    if (uiState.gameStatus !== 'resolving_hand') return false
 
-    const { towers, storedTowers, grid } = gameStateRef.current
+    const state = gameStateRef.current
+    const selected = state.mahjong.roundTiles.find(resource => resource.id === tileId)
+    if (!selected) return false
 
-    const selectedTower = storedTowers.find(tower => tower.id === selectedTowerId)
-    const consumedTowerId = selectedTowerId === towerId1 ? towerId2 : towerId1
-    const consumedTower = storedTowers.find(tower => tower.id === consumedTowerId)
+    state.mahjong.heldTile = selected.tile
+    state.mahjong.pool.push(...state.mahjong.roundTiles
+      .filter(resource => resource.id !== tileId)
+      .map(resource => resource.tile))
+    state.mahjong.roundTiles = []
 
-    if (
-      !selectedTower
-      || !consumedTower
-      || !towers.some(tower => tower.id === selectedTowerId)
-      || !towers.some(tower => tower.id === consumedTowerId)
-    ) {
-      console.warn('找不到要合成的塔')
-      return false
-    }
-
-    // 验证是否可以合成
-    if (
-      selectedTower.gemType !== consumedTower.gemType
-      || selectedTower.level !== consumedTower.level
-    ) {
-      alert('只能合成相同类型和等级的塔!')
-      return false
-    }
-    
-    // 检查是否是最高等级
-    const levels: GemLevel[] = ['chipped', 'flawed', 'normal', 'flawless']
-    const currentIndex = levels.indexOf(selectedTower.level)
-    
-    if (currentIndex >= levels.length - 1) {
-      alert('已经是最高等级了!')
-      return false
-    }
-    
-    const newLevel = levels[currentIndex + 1]
-
-    const upgradedTower = createUpgradedTowerAtAnchor(selectedTower, newLevel)
-    if (!upgradedTower) {
-      return false
-    }
-
-    const mapTowerIndex = towers.findIndex(tower => tower.id === selectedTowerId)
-    towers[mapTowerIndex] = upgradedTower
-
-    const consumedGridPosition = consumedTower.gridPosition
-    const consumedMapIndex = towers.findIndex(tower => tower.id === consumedTowerId)
-    towers.splice(consumedMapIndex, 1)
-
-    grid[consumedGridPosition.row][consumedGridPosition.col] = {
-      type: 'obstacle',
-      row: consumedGridPosition.row,
-      col: consumedGridPosition.col
-    }
-    gameStateRef.current.obstacleOrder.push({ ...consumedGridPosition })
-
-    console.log(`✅ 合成材料变为障碍物: (${consumedGridPosition.row},${consumedGridPosition.col})`)
-
-    // 更新场上保留塔索引
-    gameStateRef.current.storedTowers = storedTowers.filter(
-      tower => tower.id !== towerId1 && tower.id !== towerId2
-    )
-    gameStateRef.current.storedTowers.push(upgradedTower)
-    
-    ageObstacles(0)
-    
-    console.log(`合成成功: ${selectedTower.gemType} ${selectedTower.level} x2 → ${upgradedTower.gemType} ${newLevel}`)
-    return true
-  }, [ageObstacles, uiState.gameStatus])
-  
-  /**
-   * 合成特殊塔
-   * 
-   * 特殊塔配方:
-   * - 银塔: 钻石 + 黄玉 = 多目标攻击 + 溅射伤害
-   * - 孔雀石: 黄玉 + 蛋白石 = 溅射伤害 + 减速效果
-   * - 星红宝石: 紫水晶 + 红宝石 = 纯粹伤害 + 高暴击
-   * - 月长石: 蓝宝石 + 蛋白石 = 魔法穿透 + 减速
-   * - 玉石: 翡翠 + 黑曜石 = 毒素伤害 + 眩晕
-   * - 玛瑙: 红宝石 + 黑曜石 = 纯粹伤害 + 暴击 + 眩晕
-   * 
-   * @param specialType - 特殊塔类型
-   * @param selectedTowerId - 玩家在场上选中的材料塔ID，也是合成塔的落点
-   */
-  const synthesizeSpecialTower = useCallback((
-    specialType: SpecialTowerType,
-    selectedTowerId: string
-  ) => {
-    if (uiState.gameStatus !== 'building' && uiState.gameStatus !== 'ready') {
-      return false
-    }
-
-    const { towers, storedTowers, grid } = gameStateRef.current
-    
-    console.log(`开始合成特殊塔: ${specialType}`)
-    
-    const selectedTowers = findSpecialSynthesisMaterials(
-      storedTowers,
-      specialType,
-      selectedTowerId
-    )
-    if (
-      !selectedTowers
-      || selectedTowers.some(material => !towers.some(tower => tower.id === material.id))
-    ) {
-      return false
-    }
-    
-    console.log('选中的材料塔:', selectedTowers.map(t => `${t.gemType} ${t.level}`))
-    
-    // 所选场上塔固定为合成塔落点
-    const firstTower = selectedTowers[0]
-    const newTower = createSpecialTowerAtAnchor(firstTower, specialType)
-
-    const mapTowerIndex = towers.findIndex(t => t.id === firstTower.id)
-    towers[mapTowerIndex] = newTower
-    console.log('更新所选位置的塔为新特殊塔')
-    
-    // ✅ 修改: 其他材料塔变成障碍物
-    for (let i = 1; i < selectedTowers.length; i++) {
-      const materialTower = selectedTowers[i]
-      const materialGridPos = materialTower.gridPosition
-      
-      // 从towers数组移除
-      const index = towers.findIndex(t => t.id === materialTower.id)
-      if (index !== -1) {
-        towers.splice(index, 1)
-      }
-      
-      // 将该位置变为障碍物
-      grid[materialGridPos.row][materialGridPos.col] = {
-        type: 'obstacle',
-        row: materialGridPos.row,
-        col: materialGridPos.col
-      }
-      gameStateRef.current.obstacleOrder.push({ ...materialGridPos })
-      
-      console.log(`✅ 合成材料变为障碍物: (${materialGridPos.row},${materialGridPos.col})`)
-    }
-    
-    // 从场上保留塔索引移除所有材料塔
-    for (const tower of selectedTowers) {
-      const index = storedTowers.findIndex(t => t.id === tower.id)
-      if (index !== -1) {
-        storedTowers.splice(index, 1)
-        console.log(`从场上塔索引移除材料塔: ${tower.gemType} ${tower.level}`)
-      }
-    }
-    
-    // 将新塔添加回场上保留塔索引
-    storedTowers.push(newTower)
-    console.log(`合成成功! 新塔: ${specialType}, 伤害:${newTower.damage}, 范围:${newTower.range}`)
-    
-    ageObstacles(0)
-    
-    const specialNameMap: Record<SpecialTowerType, string> = {
-      silver: '银塔',
-      malachite: '孔雀石',
-      starRuby: '星红宝石',
-      moonstone: '月长石',
-      jade: '玉石',
-      onyx: '玛瑙'
-    }
-    alert(`成功合成${specialNameMap[specialType]}!`)
-    return true
-  }, [ageObstacles, uiState.gameStatus])
-  
-  /**
-   * ✅ 新增: 升级游戏等级
-   * 
-   * 游戏等级影响塔生成概率:
-   * - 等级越高,高等级塔出现概率越大
-   * - 升级需要消耗金币,费用指数增长
-   */
-  const upgradeGameLevel = useCallback(() => {
-    const upgradeCost = calculateUpgradeCost(uiState.gameLevel)
-    
-    if (uiState.gold < upgradeCost) {
-      alert(`金币不足!需要${upgradeCost}金币才能升级到Lv.${uiState.gameLevel + 1}`)
-      return
-    }
-    
-    const oldLevel = uiState.gameLevel
-    const newLevel = oldLevel + 1
-    
     setUiState(prev => ({
       ...prev,
-      gold: prev.gold - upgradeCost,
-      gameLevel: newLevel
+      gameStatus: 'ready',
+      heldTileSuit: selected.tile.suit,
+      roundTiles: [],
+      mahjongPoolCount: state.mahjong.pool.length,
+      canGambleForHonor: false,
+      lastHonorGamble: null
     }))
-    
-    console.log(`🎉 游戏等级提升: Lv.${oldLevel} → Lv.${newLevel}`)
-    console.log(`  消耗金币: ${upgradeCost}`)
-    console.log(`  新的塔等级概率:`)
-    const probs = getTowerLevelProbabilities(newLevel)
-    console.log(`    粗制(chipped): ${(probs.chipped * 100).toFixed(0)}%`)
-    console.log(`    有瑕(flawed): ${(probs.flawed * 100).toFixed(0)}%`)
-    console.log(`    普通(normal): ${(probs.normal * 100).toFixed(0)}%`)
-    
-    alert(`成功升级到Lv.${newLevel}!\n高等级塔的出现概率提升了!`)
-  }, [uiState.gold, uiState.gameLevel])
+    return true
+  }, [uiState.gameStatus])
+
+  const gambleForMahjongHonor = useCallback(() => {
+    if (uiState.gameStatus !== 'resolving_hand') return false
+
+    const state = gameStateRef.current
+    if (!canGambleForMahjongHonor(state.mahjong.roundTiles)) return false
+
+    const result = resolveMahjongHonorGamble(state.mahjong.roundTiles)
+    state.mahjong.pool.push(...state.mahjong.roundTiles.map(resource => resource.tile))
+    state.mahjong.roundTiles = []
+    state.mahjong.heldTile = null
+    if (result.honor) state.mahjong.functionTiles.push(result.honor)
+
+    setUiState(prev => ({
+      ...prev,
+      gameStatus: 'ready',
+      heldTileSuit: null,
+      roundTiles: [],
+      functionTiles: [...state.mahjong.functionTiles],
+      mahjongPoolCount: state.mahjong.pool.length,
+      canGambleForHonor: false,
+      lastHonorGamble: result.success ? 'success' : 'failure'
+    }))
+    return true
+  }, [uiState.gameStatus])
   
   /**
    * 开始下一波敌人
@@ -994,7 +804,9 @@ export function useGameEngine() {
         tower.lastAttackTime = now
         
         // 🎵 播放攻击音效
-        const soundType: SoundType = tower.specialType || (tower.gemType as SoundType)
+        const soundType: SoundType = tower.mahjongTile
+          ? 'diamond'
+          : tower.specialType || (tower.gemType as SoundType)
         soundManager.play(soundType)
       }
     })
@@ -1202,7 +1014,14 @@ export function useGameEngine() {
 
         const nextStatus = getStatusAfterWave(uiState.wave, WAVES.length)
         if (nextStatus === 'building') {
-          ageObstacles(ECONOMY_CONFIG.towersPerRound)
+          const state = gameStateRef.current
+          const nextRound = beginMahjongRound(
+            state.mahjong.pool,
+            state.mahjong.heldTile
+          )
+          state.mahjong.pool = nextRound.pool
+          state.mahjong.roundTiles = nextRound.roundTiles
+          state.mahjong.heldTile = null
         }
         
         setUiState(prev => {
@@ -1214,14 +1033,15 @@ export function useGameEngine() {
             ...prev,
             wood: canBuild ? ECONOMY_CONFIG.woodPerRound : 0,
             gameStatus: nextStatus,
-            canPlaceTowers: canBuild
+            canPlaceTowers: canBuild,
+            ...(canBuild ? createMahjongUiState(gameStateRef.current.mahjong) : {})
           }
         })
         
         console.log(`第${uiState.wave}波完成!`)
       }
     }
-  }, [uiState.gameStatus, uiState.wave, spawnEnemies, updateEnemies, processTowerAttacks, updateBullets, ageObstacles])
+  }, [uiState.gameStatus, uiState.wave, spawnEnemies, updateEnemies, processTowerAttacks, updateBullets])
   
   // ==================== Render函数 ====================
 
@@ -1242,6 +1062,7 @@ export function useGameEngine() {
     uiState.gameStatus !== 'paused' && (
       uiState.gameStatus === 'building' ||
         uiState.gameStatus === 'deciding' ||
+        uiState.gameStatus === 'resolving_hand' ||
         uiState.gameStatus === 'ready' ||
         uiState.gameStatus === 'playing' ||
         hasActiveDamageNumbers
@@ -1262,6 +1083,7 @@ export function useGameEngine() {
 
   const resetGame = useCallback(() => {
     const grid = initializeGrid()
+    const mahjong = createInitialMahjongState()
     gameStateRef.current = {
       enemies: [],
       towers: [],
@@ -1279,24 +1101,23 @@ export function useGameEngine() {
       gameTime: 0,
       currentBatchTowerIds: [],
       currentHealthMultiplier: 1,
-      obstacleOrder: []
+      obstacleOrder: [],
+      mahjong
     }
     setHasActiveDamageNumbers(false)
-    setUiState(createInitialUiState())
+    setUiState(createInitialUiState(mahjong))
   }, [calculatePath])
   
   return {
     uiState,
     gameStateRef,
-    selectGem,
+    selectRoundTile,
     previewTowerPlacement,
     clearPlacementPreview,
     placeTower,
-    removeObstacle,
     finalizeTowers,
-    synthesizeTowers,
-    synthesizeSpecialTower,  // 新增
-    upgradeGameLevel,  // ✅ 新增: 升级游戏等级
+    keepMahjongHand,
+    gambleForMahjongHonor,
     startWave,
     pause,
     resume,
