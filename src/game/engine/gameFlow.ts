@@ -86,3 +86,20 @@ export function getStateAfterMineDamage(
     gameStatus: nextHealth === 0 ? 'game_over' : currentStatus
   }
 }
+
+export function getStateAfterMineDamageBatch(
+  currentHealth: number,
+  mineDamages: ReadonlyArray<number>,
+  currentStatus: GameStatus
+): MineDamageResult {
+  return mineDamages.reduce<MineDamageResult>((state, mineDamage) => (
+    getStateAfterMineDamage(
+      state.mineHealth,
+      mineDamage,
+      state.gameStatus
+    )
+  ), {
+    mineHealth: currentHealth,
+    gameStatus: currentStatus
+  })
+}

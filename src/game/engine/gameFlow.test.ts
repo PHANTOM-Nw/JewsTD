@@ -8,6 +8,7 @@ import {
   canStartConfiguredWave,
   getCompletedWaveForNotice,
   getStateAfterMineDamage,
+  getStateAfterMineDamageBatch,
   getStatusAfterPlacement,
   getStatusAfterWave
 } from './gameFlow'
@@ -98,5 +99,16 @@ describe('build and wave flow', () => {
       mineHealth: 10,
       gameStatus: 'playing'
     })
+  })
+
+  it('settles a same-frame escape batch once and treats an empty batch as a no-op', () => {
+    const settled = getStateAfterMineDamageBatch(15, [1, 5, 1], 'playing')
+
+    expect(settled).toEqual({ mineHealth: 8, gameStatus: 'playing' })
+    expect(getStateAfterMineDamageBatch(
+      settled.mineHealth,
+      [],
+      settled.gameStatus
+    )).toEqual(settled)
   })
 })

@@ -41,6 +41,7 @@ export type SpecialTowerType =
 // 敌人类
 export interface Enemy {
   id: string
+  spawnSequence: number
   type: EnemyType
   position: Position
   health: number

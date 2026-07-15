@@ -14,6 +14,10 @@ dist-ssr
 *.orig
 *.rej
 
+# Agent instruction files (local only)
+AGENTS.md
+CLAUDE.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -9,14 +9,13 @@ import type {
   GemType,
   GemLevel,
   SpecialTowerType,
-  EnemyType,
   DamageNumber,
   DamageNumberType,
   PlacementPreview,
   UIState
 } from '../types/game'
 import { getTowerStats, randomizeTowerLevel, calculateUpgradeCost, getTowerLevelProbabilities } from '../config/towers'
-import { createEnemy } from '../config/enemies'
+import { createEnemy, ENEMY_TYPES } from '../config/enemies'
 import { WAVES } from '../config/waves'
 import { initializeGrid, gridToPixel } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
@@ -24,7 +23,7 @@ import { soundManager, type SoundType } from '../services/audio'
 import {
   canFinalizeTowerBatch,
   canStartConfiguredWave,
-  getStateAfterMineDamage,
+  getStateAfterMineDamageBatch,
   getStatusAfterPlacement,
   getStatusAfterWave
 } from './gameFlow'
@@ -52,6 +51,17 @@ import {
 } from './building'
 import { renderGameScene } from '../rendering/canvasRenderer'
 import { advanceDamageNumbers, createDamageNumber } from './damageNumbers'
+import {
+  createPathMetrics,
+  distanceToPathCursor,
+  pathCursorToDistance,
+  resolveEnemyQueueMovement,
+  takeNextEnemySpawn
+} from './enemyMovement'
+import type {
+  EnemyMovementIntent,
+  ScheduledEnemySpawn
+} from './enemyMovement'
 
 interface EngineUiState extends UIState {
   selectedGem: GemType | null
@@ -69,7 +79,8 @@ interface EngineState {
   currentPath: { row: number; col: number }[] | null
   placementPreview: PlacementPreview | null
   waveInProgress: boolean
-  spawnQueue: Array<{ type: EnemyType; delay: number }>
+  spawnQueue: ScheduledEnemySpawn[]
+  nextEnemySpawnSequence: number
   waveElapsedTime: number
   gameTime: number
   currentBatchTowerIds: string[]
@@ -142,6 +153,7 @@ export function useGameEngine() {
       placementPreview: null,
       waveInProgress: false,
       spawnQueue: [],
+      nextEnemySpawnSequence: 0,
       waveElapsedTime: 0,
       gameTime: 0,
       currentBatchTowerIds: [],
@@ -696,7 +708,7 @@ export function useGameEngine() {
     gameStateRef.current.currentHealthMultiplier = healthMultiplier
     
     // 生成敌人生成队列
-    const spawnQueue: Array<{ type: EnemyType; delay: number }> = []
+    const spawnQueue: ScheduledEnemySpawn[] = []
     let currentTime = 0
     
     waveConfig.enemies.forEach(enemyConfig => {
@@ -782,6 +794,11 @@ export function useGameEngine() {
     
     if (!currentPath || currentPath.length === 0) return
     
+    const pathMetrics = createPathMetrics(
+      currentPath.map(point => gridToPixel(point.row, point.col))
+    )
+    const movementIntents: EnemyMovementIntent[] = []
+
     enemies.forEach(enemy => {
       if (enemy.reachedEnd || enemy.isDead) return
       
@@ -800,55 +817,64 @@ export function useGameEngine() {
 
       if (enemy.isDead) return
       
-      // ========== 更新眩晕和减速状态 ==========
+      // ========== 更新眩晕和减速状态，收集自由移动意图 ==========
+      const wasSlowed = (enemy.slowTimer ?? 0) > 0
+      const wasStunned = Boolean(
+        enemy.isStunned && (enemy.stunTimer ?? 0) > 0
+      )
       const timedEffectUpdate = advanceTimedEffects(enemy, deltaTime)
       enemy.isStunned = timedEffectUpdate.isStunned
       enemy.stunTimer = timedEffectUpdate.stunTimer
       enemy.slowTimer = timedEffectUpdate.slowTimer
       enemy.slowEffect = timedEffectUpdate.slowEffect
-      
-      if (timedEffectUpdate.travelDistance <= 0) return
-      
-      if (enemy.pathIndex >= currentPath.length - 1) {
-        // 到达终点
+
+      movementIntents.push({
+        id: enemy.id,
+        spawnSequence: enemy.spawnSequence,
+        pathDistance: pathCursorToDistance(pathMetrics, enemy),
+        radius: ENEMY_TYPES[enemy.type].radius,
+        baseSpeed: enemy.speed,
+        freeTravelDistance: timedEffectUpdate.travelDistance,
+        isSlowed: wasSlowed,
+        isStunned: wasStunned
+      })
+    })
+
+    const movementById = new Map(
+      resolveEnemyQueueMovement(
+        movementIntents,
+        pathMetrics.totalDistance,
+        deltaTime
+      ).map(movement => [movement.id, movement])
+    )
+    const escapedEnemies: Enemy[] = []
+
+    enemies.forEach(enemy => {
+      const movement = movementById.get(enemy.id)
+      if (!movement || enemy.reachedEnd || enemy.isDead) return
+
+      const cursor = distanceToPathCursor(pathMetrics, movement.pathDistance)
+      enemy.pathIndex = cursor.pathIndex
+      enemy.progress = cursor.progress
+      enemy.position = { ...cursor.position }
+
+      if (movement.reachedEnd) {
         enemy.reachedEnd = true
-        
-        // 扣除矿坑生命
-        setUiState(prev => {
-          const mineResult = getStateAfterMineDamage(
-            prev.mineHealth,
-            enemy.mineDamage,
-            prev.gameStatus
-          )
-          return { ...prev, ...mineResult }
-        })
-        
-        return
-      }
-      
-      const currentPoint = currentPath[enemy.pathIndex]
-      const nextPoint = currentPath[enemy.pathIndex + 1]
-      
-      const currentPixel = gridToPixel(currentPoint.row, currentPoint.col)
-      const nextPixel = gridToPixel(nextPoint.row, nextPoint.col)
-      
-      const dx = nextPixel.x - currentPixel.x
-      const dy = nextPixel.y - currentPixel.y
-      const distance = Math.sqrt(dx * dx + dy * dy)
-      
-      enemy.progress += timedEffectUpdate.travelDistance / distance
-      
-      if (enemy.progress >= 1) {
-        enemy.pathIndex++
-        enemy.progress = 0
-        enemy.position = { ...nextPixel }
-      } else {
-        enemy.position = {
-          x: currentPixel.x + dx * enemy.progress,
-          y: currentPixel.y + dy * enemy.progress
-        }
+        escapedEnemies.push(enemy)
       }
     })
+
+    if (escapedEnemies.length > 0) {
+      setUiState(prev => {
+        const mineResult = getStateAfterMineDamageBatch(
+          prev.mineHealth,
+          escapedEnemies.map(enemy => enemy.mineDamage),
+          prev.gameStatus
+        )
+
+        return { ...prev, ...mineResult }
+      })
+    }
     
     // 清理到达终点或死亡的敌人
     gameStateRef.current.enemies = enemies.filter(e => !e.reachedEnd && !e.isDead)
@@ -858,40 +884,65 @@ export function useGameEngine() {
    * 根据生成队列生成敌人
    * 
    * 处理:
-   * - 减少队列中敌人的delay
-   * - 当delay<=0时生成敌人(应用血量倍率)
-   * - 从队列中移除已生成的敌人
+   * - 累计波次时间并检查队首是否到期
+   * - 入口净空时生成敌人并分配稳定序号
+   * - 入口被占用时保留队首，延迟到后续帧重试
    * 
    * @param deltaTime - 距离上一帧的时间间隔(ms)
    */
   const spawnEnemies = useCallback((deltaTime: number) => {
-    const { spawnQueue, currentHealthMultiplier } = gameStateRef.current
+    const state = gameStateRef.current
+    const { currentHealthMultiplier } = state
     
     if (!gameStateRef.current.waveInProgress) return
-    if (spawnQueue.length === 0) return
+    if (state.spawnQueue.length === 0) return
     
     gameStateRef.current.waveElapsedTime += deltaTime
     const elapsedTime = gameStateRef.current.waveElapsedTime
     
     // 生成敌人
-    while (spawnQueue.length > 0 && spawnQueue[0].delay <= elapsedTime) {
-      const spawnData = spawnQueue.shift()!
-      
-      const path = gameStateRef.current.currentPath
+    while (state.spawnQueue.length > 0) {
+      const path = state.currentPath
       
       if (!path || path.length === 0) {
         console.warn('没有路径可以生成敌人!')
-        continue
+        break
       }
+
+      const pathMetrics = createPathMetrics(
+        path.map(point => gridToPixel(point.row, point.col))
+      )
+      const occupants = state.enemies
+        .filter(enemy => !enemy.isDead && !enemy.reachedEnd)
+        .map(enemy => ({
+          pathDistance: pathCursorToDistance(pathMetrics, enemy),
+          radius: ENEMY_TYPES[enemy.type].radius
+        }))
+      const spawnResolution = takeNextEnemySpawn(
+        state.spawnQueue,
+        elapsedTime,
+        occupants,
+        state.nextEnemySpawnSequence
+      )
+
+      if (!spawnResolution.spawn) break
+
+      state.spawnQueue = [...spawnResolution.queue]
+      state.nextEnemySpawnSequence = spawnResolution.nextSpawnSequence
       
       const startPos = path[0]
       const pixelPos = gridToPixel(startPos.row, startPos.col)
       
       // ✅ 应用血量倍率创建敌人
-      const newEnemy = createEnemy(spawnData.type, pixelPos, currentHealthMultiplier)
+      const newEnemy = createEnemy(
+        spawnResolution.spawn.type,
+        pixelPos,
+        currentHealthMultiplier,
+        spawnResolution.spawn.spawnSequence
+      )
       
-      gameStateRef.current.enemies.push(newEnemy)
-      console.log(`生成敌人: ${spawnData.type}, 血量=${newEnemy.health} (${currentHealthMultiplier}x)`) // 调试日志
+      state.enemies.push(newEnemy)
+      console.log(`生成敌人: ${spawnResolution.spawn.type}, 血量=${newEnemy.health} (${currentHealthMultiplier}x)`) // 调试日志
     }
   }, [])
   
@@ -1223,6 +1274,7 @@ export function useGameEngine() {
       placementPreview: null,
       waveInProgress: false,
       spawnQueue: [],
+      nextEnemySpawnSequence: 0,
       waveElapsedTime: 0,
       gameTime: 0,
       currentBatchTowerIds: [],

@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type {
-  MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent
-} from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { MAP_CONFIG } from '../config/map'
 import { preloadSpriteAssets } from '../rendering/spriteRegistry'
 import {
   beginPlacementPointer,
-  consumePlacementClick,
   createPlacementPointerState,
   finishPlacementPointer,
   isPrimaryPlacementPointer,
@@ -74,17 +70,18 @@ export function GameCanvas({
   }, [height, width])
 
   const endPlacementPreview = useCallback((
-    suppressClick: boolean,
+    cancelled: boolean,
     pointerId: number | null = null
   ) => {
     const result = finishPlacementPointer(
       placementPointerStateRef.current,
       pointerId,
-      suppressClick
+      cancelled
     )
     placementPointerStateRef.current = result.state
-    if (!result.ended) return
+    if (!result.ended) return false
     onPlacementPreviewEnd?.()
+    return result.shouldCommit
   }, [onPlacementPreviewEnd])
 
   useEffect(() => {
@@ -115,7 +112,7 @@ export function GameCanvas({
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (
-      !onPlacementPreview
+      (!onPlacementPreview && !onClick)
       || !isPrimaryPlacementPointer(event.isPrimary, event.button)
     ) {
       return
@@ -133,23 +130,14 @@ export function GameCanvas({
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (placementPointerStateRef.current.activePointerId !== event.pointerId) return
-    endPlacementPreview(false, event.pointerId)
+    const gridPosition = getGridPosition(event.clientX, event.clientY)
+    const shouldCommit = endPlacementPreview(!gridPosition, event.pointerId)
+    if (shouldCommit && gridPosition) onClick?.(gridPosition)
   }
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (placementPointerStateRef.current.activePointerId !== event.pointerId) return
     endPlacementPreview(true, event.pointerId)
-  }
-
-  const handleClick = (event: ReactMouseEvent<HTMLCanvasElement>) => {
-    const click = consumePlacementClick(placementPointerStateRef.current)
-    placementPointerStateRef.current = click.state
-    if (!click.shouldCommit) return
-
-    if (!onClick) return
-    const gridPosition = getGridPosition(event.clientX, event.clientY)
-
-    if (gridPosition) onClick(gridPosition)
   }
 
   return (
@@ -161,7 +149,6 @@ export function GameCanvas({
       aria-label="8列10行宝石塔防地图。按住或拖动空格预览落塔后的路线，松开建塔；点击塔查看合成，备战时点击障碍可清除。"
       tabIndex={0}
       onBlur={() => endPlacementPreview(true)}
-      onClick={handleClick}
       onContextMenu={event => event.preventDefault()}
       onLostPointerCapture={() => endPlacementPreview(true)}
       onPointerCancel={handlePointerCancel}

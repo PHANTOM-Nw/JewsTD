@@ -1,5 +1,9 @@
 import type { Enemy, EnemyType } from '../types/game'
 
+export const ENEMY_TRAFFIC_CONFIG = {
+  gap: 3
+} as const
+
 export const ENEMY_TYPES = {
   basic: {
     health: 50,
@@ -51,7 +55,8 @@ export const ENEMY_TYPES = {
 export function createEnemy(
   type: EnemyType,
   startPosition: { x: number; y: number },
-  healthMultiplier: number = 1.0  // 血量倍率(默认1.0)
+  healthMultiplier: number = 1.0,  // 血量倍率(默认1.0)
+  spawnSequence = 0
 ): Enemy {
   const config = ENEMY_TYPES[type]
   
@@ -60,6 +65,7 @@ export function createEnemy(
   
   return {
     id: `enemy_${Date.now()}_${Math.random()}`,
+    spawnSequence,
     type,
     position: startPosition,
     health: actualHealth,

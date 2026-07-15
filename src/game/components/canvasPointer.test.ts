@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { gridToPixel, MAP_CONFIG } from '../config/map'
 import {
   beginPlacementPointer,
-  consumePlacementClick,
   createPlacementPointerState,
   finishPlacementPointer,
   isPrimaryPlacementPointer,
@@ -113,18 +112,26 @@ describe('placement preview pointer state', () => {
     expect(unrelated.changed).toBe(false)
   })
 
-  it('allows a click after pointer up but suppresses one after cancellation', () => {
+  it('commits exactly once after pointer up and never commits a canceled gesture', () => {
     const active = beginPlacementPointer(7)
     const completed = finishPlacementPointer(active, 7, false)
     const canceled = finishPlacementPointer(active, null, true)
-    const completedClick = consumePlacementClick(completed.state)
-    const canceledClick = consumePlacementClick(canceled.state)
+    const repeatedFinish = finishPlacementPointer(completed.state, 7, false)
 
     expect(completed.ended).toBe(true)
-    expect(completedClick.shouldCommit).toBe(true)
+    expect(completed.shouldCommit).toBe(true)
+    expect(repeatedFinish.shouldCommit).toBe(false)
     expect(canceled.ended).toBe(true)
-    expect(canceledClick.shouldCommit).toBe(false)
-    expect(consumePlacementClick(canceledClick.state).shouldCommit).toBe(true)
+    expect(canceled.shouldCommit).toBe(false)
+  })
+
+  it('does not carry cancellation into the next pointer gesture', () => {
+    const canceled = finishPlacementPointer(beginPlacementPointer(7), 7, true)
+    const nextGesture = beginPlacementPointer(8)
+    const completed = finishPlacementPointer(nextGesture, 8, false)
+
+    expect(canceled.state).toEqual(createPlacementPointerState())
+    expect(completed.shouldCommit).toBe(true)
   })
 
   it('ignores finish signals for an unrelated or idle pointer', () => {
@@ -132,7 +139,12 @@ describe('placement preview pointer state', () => {
     const unrelated = finishPlacementPointer(active, 8, true)
     const idle = finishPlacementPointer(createPlacementPointerState(), null, true)
 
-    expect(unrelated).toEqual({ state: active, ended: false })
+    expect(unrelated).toEqual({
+      state: active,
+      ended: false,
+      shouldCommit: false
+    })
     expect(idle.ended).toBe(false)
+    expect(idle.shouldCommit).toBe(false)
   })
 })

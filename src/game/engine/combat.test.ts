@@ -16,6 +16,7 @@ import {
 function createEnemy(id: string, pathIndex: number, progress: number, x: number): Enemy {
   return {
     id,
+    spawnSequence: Number(id.replace(/\D/g, '')) || 0,
     type: 'basic',
     position: { x, y: 0 },
     health: 100,

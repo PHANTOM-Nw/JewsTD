@@ -10,14 +10,12 @@ interface CanvasDisplayRect {
 export interface PlacementPointerState {
   activePointerId: number | null
   lastCellKey: string | null
-  suppressNextClick: boolean
 }
 
 export function createPlacementPointerState(): PlacementPointerState {
   return {
     activePointerId: null,
-    lastCellKey: null,
-    suppressNextClick: false
+    lastCellKey: null
   }
 }
 
@@ -26,8 +24,7 @@ export function beginPlacementPointer(
 ): PlacementPointerState {
   return {
     activePointerId: pointerId,
-    lastCellKey: null,
-    suppressNextClick: false
+    lastCellKey: null
   }
 }
 
@@ -54,35 +51,23 @@ export function selectPlacementPreviewCell(
 export function finishPlacementPointer(
   state: PlacementPointerState,
   pointerId: number | null,
-  suppressNextClick: boolean
-): { state: PlacementPointerState; ended: boolean } {
+  cancelled: boolean
+): {
+  state: PlacementPointerState
+  ended: boolean
+  shouldCommit: boolean
+} {
   if (
     state.activePointerId === null
     || (pointerId !== null && state.activePointerId !== pointerId)
   ) {
-    return { state, ended: false }
+    return { state, ended: false, shouldCommit: false }
   }
 
   return {
-    state: {
-      activePointerId: null,
-      lastCellKey: null,
-      suppressNextClick: state.suppressNextClick || suppressNextClick
-    },
-    ended: true
-  }
-}
-
-export function consumePlacementClick(
-  state: PlacementPointerState
-): { state: PlacementPointerState; shouldCommit: boolean } {
-  if (!state.suppressNextClick) {
-    return { state, shouldCommit: true }
-  }
-
-  return {
-    state: { ...state, suppressNextClick: false },
-    shouldCommit: false
+    state: createPlacementPointerState(),
+    ended: true,
+    shouldCommit: !cancelled
   }
 }
 
