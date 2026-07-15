@@ -75,6 +75,7 @@ interface MahjongRuntimeState {
   roundTiles: MahjongRoundTile[]
   heldTile: MahjongNumberTile | null
   functionTiles: MahjongHonor[]
+  handResolutionMode: 'choosing' | 'keeping' | null
 }
 
 interface EngineState {
@@ -104,14 +105,12 @@ function createInitialMahjongState(): MahjongRuntimeState {
     pool: firstRound.pool,
     roundTiles: firstRound.roundTiles,
     heldTile: null,
-    functionTiles: []
+    functionTiles: [],
+    handResolutionMode: null
   }
 }
 
-function createMahjongUiState(
-  mahjong: MahjongRuntimeState,
-  revealDrawnSuits = false
-): Pick<EngineUiState,
+function createMahjongUiState(mahjong: MahjongRuntimeState): Pick<EngineUiState,
   | 'mahjongPoolCount'
   | 'roundTiles'
   | 'heldTileSuit'
@@ -119,12 +118,14 @@ function createMahjongUiState(
   | 'canGambleForHonor'
   | 'lastHonorGamble'
 > {
+  const revealDrawnSuits = mahjong.handResolutionMode === 'keeping'
   return {
     mahjongPoolCount: mahjong.pool.length,
     roundTiles: toMahjongRoundTileViews(mahjong.roundTiles, revealDrawnSuits),
     heldTileSuit: mahjong.heldTile?.suit ?? null,
     functionTiles: [...mahjong.functionTiles],
-    canGambleForHonor: revealDrawnSuits && canGambleForMahjongHonor(mahjong.roundTiles),
+    canGambleForHonor: mahjong.handResolutionMode === 'choosing'
+      && canGambleForMahjongHonor(mahjong.roundTiles),
     lastHonorGamble: null
   }
 }
@@ -422,13 +423,17 @@ export function useGameEngine() {
     
     // 清空当前批次列表
     gameStateRef.current.currentBatchTowerIds = []
+
+    gameStateRef.current.mahjong.handResolutionMode = canGambleForMahjongHonor(
+      gameStateRef.current.mahjong.roundTiles
+    ) ? 'choosing' : 'keeping'
     
     setUiState(prev => ({
       ...prev,
       wood: 0,
       gameStatus: 'resolving_hand',
       canPlaceTowers: false,
-      ...createMahjongUiState(gameStateRef.current.mahjong, true)
+      ...createMahjongUiState(gameStateRef.current.mahjong)
     }))
     
     console.log('最终塔数量:', towers.length, '场上保留塔数量:', storedTowers.length)
@@ -439,6 +444,7 @@ export function useGameEngine() {
     if (uiState.gameStatus !== 'resolving_hand') return false
 
     const state = gameStateRef.current
+    if (state.mahjong.handResolutionMode !== 'keeping') return false
     const selected = state.mahjong.roundTiles.find(resource => resource.id === tileId)
     if (!selected) return false
 
@@ -447,6 +453,7 @@ export function useGameEngine() {
       .filter(resource => resource.id !== tileId)
       .map(resource => resource.tile))
     state.mahjong.roundTiles = []
+    state.mahjong.handResolutionMode = null
 
     setUiState(prev => ({
       ...prev,
@@ -460,16 +467,41 @@ export function useGameEngine() {
     return true
   }, [uiState.gameStatus])
 
+  const revealMahjongHandSuits = useCallback(() => {
+    if (uiState.gameStatus !== 'resolving_hand') return false
+
+    const state = gameStateRef.current
+    if (
+      state.mahjong.handResolutionMode !== 'choosing'
+      || !canGambleForMahjongHonor(state.mahjong.roundTiles)
+    ) {
+      return false
+    }
+
+    state.mahjong.handResolutionMode = 'keeping'
+    setUiState(prev => ({
+      ...prev,
+      ...createMahjongUiState(state.mahjong)
+    }))
+    return true
+  }, [uiState.gameStatus])
+
   const gambleForMahjongHonor = useCallback(() => {
     if (uiState.gameStatus !== 'resolving_hand') return false
 
     const state = gameStateRef.current
-    if (!canGambleForMahjongHonor(state.mahjong.roundTiles)) return false
+    if (
+      state.mahjong.handResolutionMode !== 'choosing'
+      || !canGambleForMahjongHonor(state.mahjong.roundTiles)
+    ) {
+      return false
+    }
 
     const result = resolveMahjongHonorGamble(state.mahjong.roundTiles)
     state.mahjong.pool.push(...state.mahjong.roundTiles.map(resource => resource.tile))
     state.mahjong.roundTiles = []
     state.mahjong.heldTile = null
+    state.mahjong.handResolutionMode = null
     if (result.honor) state.mahjong.functionTiles.push(result.honor)
 
     setUiState(prev => ({
@@ -1022,6 +1054,7 @@ export function useGameEngine() {
           state.mahjong.pool = nextRound.pool
           state.mahjong.roundTiles = nextRound.roundTiles
           state.mahjong.heldTile = null
+          state.mahjong.handResolutionMode = null
         }
         
         setUiState(prev => {
@@ -1116,6 +1149,7 @@ export function useGameEngine() {
     clearPlacementPreview,
     placeTower,
     finalizeTowers,
+    revealMahjongHandSuits,
     keepMahjongHand,
     gambleForMahjongHonor,
     startWave,

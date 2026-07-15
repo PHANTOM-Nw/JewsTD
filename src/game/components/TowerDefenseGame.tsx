@@ -26,6 +26,7 @@ export const TowerDefenseGame: React.FC = () => {
     clearPlacementPreview,
     placeTower,
     finalizeTowers,
+    revealMahjongHandSuits,
     keepMahjongHand,
     gambleForMahjongHonor,
     startWave,
@@ -222,6 +223,7 @@ export const TowerDefenseGame: React.FC = () => {
           lastHonorGamble={uiState.lastHonorGamble}
           currentWave={uiState.wave}
           onTilePointerDown={beginTileDrag}
+          onRevealHandSuits={revealMahjongHandSuits}
           onKeepHand={keepMahjongHand}
           onGambleForHonor={gambleForMahjongHonor}
           onStartWave={startWave}

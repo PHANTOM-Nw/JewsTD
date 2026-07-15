@@ -88,6 +88,56 @@ describe('mahjong hidden information', () => {
     expect(views[1]).not.toHaveProperty('copy')
     expect(views[1]).not.toHaveProperty('tile')
   })
+
+  it('reveals newly drawn suits only after the player chooses hand keeping', () => {
+    const pool = createMahjongTilePool()
+    const heldTile = pool.find(tile => tile.suit === 'characters')!
+    const drawnTiles = [
+      pool.find(tile => tile.suit === 'bamboo')!,
+      pool.find(tile => tile.suit === 'dots')!
+    ]
+    const roundTiles = [
+      toRoundTile(heldTile, 'hand'),
+      ...drawnTiles.map(tile => toRoundTile(tile, 'draw'))
+    ]
+
+    const choosingViews = toMahjongRoundTileViews(roundTiles)
+    expect(choosingViews).toEqual([
+      {
+        id: heldTile.id,
+        source: 'hand',
+        visibility: 'suit',
+        suit: 'characters'
+      },
+      {
+        id: drawnTiles[0].id,
+        source: 'draw',
+        visibility: 'hidden',
+        suit: undefined
+      },
+      {
+        id: drawnTiles[1].id,
+        source: 'draw',
+        visibility: 'hidden',
+        suit: undefined
+      }
+    ])
+
+    const keepingViews = toMahjongRoundTileViews(roundTiles, true)
+    expect(keepingViews.map(view => ({
+      source: view.source,
+      visibility: view.visibility,
+      suit: view.suit
+    }))).toEqual([
+      { source: 'hand', visibility: 'suit', suit: 'characters' },
+      { source: 'draw', visibility: 'suit', suit: 'bamboo' },
+      { source: 'draw', visibility: 'suit', suit: 'dots' }
+    ])
+    keepingViews.forEach(view => {
+      expect(view).not.toHaveProperty('rank')
+      expect(view).not.toHaveProperty('tile')
+    })
+  })
 })
 
 describe('mahjong face layouts', () => {

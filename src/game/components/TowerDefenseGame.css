@@ -390,6 +390,32 @@
   gap: 7px;
 }
 
+.mahjong-hand-decision {
+  display: grid;
+  gap: 8px;
+}
+
+.mahjong-hand-decision__tiles {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.mahjong-hand-decision__tiles > div {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  color: #765326;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.mahjong-hand-decision__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
 .mahjong-hand-resolution__choices {
   display: flex;
   justify-content: center;
@@ -417,6 +443,7 @@
   line-height: 1.2;
 }
 
+.mahjong-inspect,
 .mahjong-gamble {
   display: flex;
   min-height: 46px;
@@ -428,10 +455,28 @@
   color: #7e2618;
   font-size: 15px;
   font-weight: 900;
+}
+
+.mahjong-inspect {
+  border: 2px solid #ca8b24;
+  border-radius: 10px;
+  color: #76500e;
+  background: #fff4c9;
+}
+
+.mahjong-gamble {
+  border: 2px solid #b94b31;
+  border-radius: 10px;
+  color: #7e2618;
   background: #ffe8c8;
 }
 
-.mahjong-gamble small { font-size: 9px; font-weight: 700; }
+.mahjong-inspect small,
+.mahjong-gamble small {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.25;
+}
 
 .mahjong-gamble-result {
   margin: 0;
