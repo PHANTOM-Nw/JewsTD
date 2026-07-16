@@ -64,9 +64,8 @@ export function GameUI({
   }
 
   return (
-    <header className="game-ui" aria-label="游戏资源与快捷操作">
+    <header className="game-ui" aria-label="麻将 TD 游戏资源与快捷操作">
       <div className="game-header">
-        <h1 className="game-title">麻将TD</h1>
         {phaseHint}
         <div className="game-ui__utilities" aria-label="快捷操作">
           {fullscreen?.isSupported && (

@@ -38,21 +38,6 @@
   min-height: 44px;
 }
 
-.game-title {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 2px 14px 3px;
-  border: 2px solid rgba(173, 103, 24, 0.6);
-  border-radius: 999px;
-  color: var(--brown);
-  font-size: 21px;
-  font-weight: 900;
-  line-height: 1.25;
-  letter-spacing: 0.06em;
-  background: rgba(255, 240, 206, 0.94);
-  box-shadow: 0 3px 0 rgba(140, 82, 18, 0.2);
-}
-
 .game-ui {
   position: relative;
   z-index: 5;
@@ -1273,7 +1258,6 @@ button:disabled {
   .game-ui__icon { width: 19px; height: 19px; }
   .game-ui__label { font-size: 9px; }
   .game-ui__value { font-size: 13px; }
-  .game-title { padding-inline: 8px; font-size: 18px; }
   .game-phase-hint strong { display: none; }
 }
 
