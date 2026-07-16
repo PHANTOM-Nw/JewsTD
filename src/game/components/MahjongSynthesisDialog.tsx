@@ -16,21 +16,22 @@ import {
 import type {
   GameStatus,
   GridCell,
-  MahjongFormation,
   MahjongRank,
   Tower
 } from '../types/game'
 import {
+  getAvailableMahjongSynthesisOptions,
   getMahjongAbilitySummary,
   getMahjongPairRouteHint,
   getMahjongStateFinalStats,
   submitMahjongSynthesis,
+  type MahjongSynthesisTargetFormation,
   type MahjongSynthesisSubmitRequest,
   type MahjongSynthesisSubmitResult
 } from './mahjongUiModel'
 import { MahjongTile } from './MahjongTile'
 
-type TargetFormation = Exclude<MahjongFormation, 'single'>
+type TargetFormation = MahjongSynthesisTargetFormation
 
 interface MahjongSynthesisDialogProps {
   gameStatus: GameStatus
@@ -80,12 +81,6 @@ function positionKey(position: Pick<GridCell, 'row' | 'col'>): string {
 
 function formatPosition(position: { row: number; col: number }): string {
   return `${position.row + 1}行${position.col + 1}列`
-}
-
-function getChowStarts(rank: MahjongRank): MahjongRank[] {
-  return ([1, 2, 3, 4, 5, 6, 7] as const).filter(start => (
-    rank >= start && rank <= start + 2
-  ))
 }
 
 function toChowRanks(start: MahjongRank): readonly [MahjongRank, MahjongRank, MahjongRank] {
@@ -155,15 +150,38 @@ export function MahjongSynthesisDialog({
   onConfirm,
   onClose
 }: MahjongSynthesisDialogProps) {
-  const [formation, setFormation] = useState<TargetFormation>(
-    initialSelection?.formation ?? 'pair'
+  const synthesisOptions = useMemo(() => getAvailableMahjongSynthesisOptions({
+    gameStatus,
+    anchorTower,
+    fieldTowers,
+    walls,
+    availableWhiteCount
+  }), [
+    anchorTower,
+    availableWhiteCount,
+    fieldTowers,
+    gameStatus,
+    walls
+  ])
+  const availableFormations = (Object.keys(FORMATION_LABELS) as TargetFormation[])
+    .filter(candidate => synthesisOptions.some(option => (
+      option.recipe.formation === candidate
+    )))
+  const availableChowStarts = synthesisOptions.flatMap(option => (
+    option.recipe.formation === 'chow' ? [option.recipe.ranks[0]] : []
+  )).filter((start, index, starts) => starts.indexOf(start) === index)
+  const [requestedFormation, setFormation] = useState<TargetFormation>(
+    initialSelection?.formation ?? availableFormations[0] ?? 'pair'
   )
-  const chowStarts = anchorTower.mahjongTile
-    ? getChowStarts(anchorTower.mahjongTile.rank)
-    : [1 as MahjongRank]
-  const [chowStart, setChowStart] = useState<MahjongRank>(
-    initialSelection?.chowStart ?? chowStarts[0]
+  const formation = availableFormations.includes(requestedFormation)
+    ? requestedFormation
+    : availableFormations[0] ?? requestedFormation
+  const [requestedChowStart, setChowStart] = useState<MahjongRank>(
+    initialSelection?.chowStart ?? availableChowStarts[0] ?? 1
   )
+  const chowStart = availableChowStarts.includes(requestedChowStart)
+    ? requestedChowStart
+    : availableChowStarts[0] ?? requestedChowStart
   const [selectedTowerIds, setSelectedTowerIds] = useState<string[]>(
     initialSelection?.materialTowerIds ?? []
   )
@@ -176,13 +194,26 @@ export function MahjongSynthesisDialog({
   const [submissionMessage, setSubmissionMessage] = useState('')
   const { dialogRef, closeButtonRef } = useDialogFocus(onClose)
 
-  const materialTowers = fieldTowers.filter(tower => (
-    tower.id !== anchorTower.id && tower.mahjongTile && tower.mahjongState
+  const recipe = createRecipe(formation, chowStart)
+  const currentOptions = synthesisOptions.filter(option => (
+    option.recipe.formation === formation
+      && (
+        option.recipe.formation !== 'chow'
+          || option.recipe.ranks[0] === chowStart
+      )
   ))
-  const materialWalls = walls.filter(wall => wall.type === 'obstacle')
+  const availableTowerIds = new Set(currentOptions.flatMap(option => (
+    option.materialTowerIds
+  )))
+  const availableWallKeys = new Set(currentOptions.flatMap(option => (
+    option.wallPosition ? [positionKey(option.wallPosition)] : []
+  )))
+  const materialTowers = fieldTowers.filter(tower => availableTowerIds.has(tower.id))
+  const materialWalls = walls.filter(wall => availableWallKeys.has(positionKey(wall)))
   const selectedTowers = materialTowers.filter(tower => selectedTowerIds.includes(tower.id))
   const selectedWall = materialWalls.find(wall => positionKey(wall) === selectedWallKey)
-  const recipe = createRecipe(formation, chowStart)
+  const canUseWhite = currentOptions.some(option => option.useWhite)
+  const selectedUseWhite = useWhite && canUseWhite
 
   const preview = useMemo(() => planMahjongSynthesis({
     gameStatus,
@@ -192,7 +223,7 @@ export function MahjongSynthesisDialog({
       ...(selectedWall ? [{ kind: 'wall' as const, wall: selectedWall }] : [])
     ],
     recipe,
-    whiteCount: useWhite ? 1 : 0,
+    whiteCount: selectedUseWhite ? 1 : 0,
     availableWhiteCount
   }), [
     anchorTower,
@@ -201,11 +232,19 @@ export function MahjongSynthesisDialog({
     recipe,
     selectedTowers,
     selectedWall,
-    useWhite
+    selectedUseWhite
   ])
 
   const chooseFormation = (nextFormation: TargetFormation) => {
     setFormation(nextFormation)
+    setSelectedTowerIds([])
+    setSelectedWallKey(null)
+    setUseWhite(false)
+    setSubmissionMessage('')
+  }
+
+  const chooseChowStart = (nextStart: MahjongRank) => {
+    setChowStart(nextStart)
     setSelectedTowerIds([])
     setSelectedWallKey(null)
     setUseWhite(false)
@@ -233,12 +272,12 @@ export function MahjongSynthesisDialog({
 
     const result = submitMahjongSynthesis({
       anchorTowerId: anchorTower.id,
-      materialTowerIds: selectedTowerIds,
+      materialTowerIds: selectedTowers.map(tower => tower.id),
       wallPositions: selectedWall
         ? [{ row: selectedWall.row, col: selectedWall.col }]
         : [],
       recipe,
-      useWhite
+      useWhite: selectedUseWhite
     }, onConfirm, onClose)
     if (!result.ok) setSubmissionMessage(FAILURE_MESSAGES[result.reason])
   }
@@ -285,9 +324,12 @@ export function MahjongSynthesisDialog({
         )}
 
         <fieldset className="mahjong-synthesis__routes">
-          <legend>1. 选择路线</legend>
-          <div>
-            {(Object.keys(FORMATION_LABELS) as TargetFormation[]).map(candidate => (
+          <legend>当前可合成路线</legend>
+          {availableFormations.length === 0 ? (
+            <p className="synthesis-empty">当前棋子、牌墙与白无法完成任何合成。</p>
+          ) : (
+            <div>
+              {availableFormations.map(candidate => (
               <button
                 key={candidate}
                 type="button"
@@ -296,22 +338,23 @@ export function MahjongSynthesisDialog({
               >
                 {FORMATION_LABELS[candidate]}
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </fieldset>
 
         {formation === 'chow' && (
           <fieldset className="mahjong-synthesis__chow">
             <legend>选择连续点数</legend>
             <div>
-              {chowStarts.map(start => {
+              {availableChowStarts.map(start => {
                 const ranks = toChowRanks(start)
                 return (
                   <button
                     key={start}
                     type="button"
                     aria-pressed={chowStart === start}
-                    onClick={() => setChowStart(start)}
+                    onClick={() => chooseChowStart(start)}
                   >
                     {ranks.join('、')}
                   </button>
@@ -321,11 +364,9 @@ export function MahjongSynthesisDialog({
           </fieldset>
         )}
 
-        <section className="synthesis-section" aria-labelledby="active-material-title">
-          <h3 id="active-material-title">2. 选择具体主动棋子</h3>
-          {materialTowers.length === 0 ? (
-            <p className="synthesis-empty">场上暂无其他可选主动棋子。</p>
-          ) : (
+        {materialTowers.length > 0 && (
+          <section className="synthesis-section" aria-labelledby="active-material-title">
+            <h3 id="active-material-title">选择具体主动棋子</h3>
             <div className="mahjong-synthesis__materials">
               {materialTowers.map(tower => {
                 const selected = selectedTowerIds.includes(tower.id)
@@ -345,46 +386,39 @@ export function MahjongSynthesisDialog({
                 )
               })}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
-        <section className="synthesis-section" aria-labelledby="wall-material-title">
-          <h3 id="wall-material-title">3. 可选普通牌墙材料</h3>
-          {materialWalls.length === 0 ? (
-            <p className="synthesis-empty">地图上没有牌墙。</p>
-          ) : (
+        {materialWalls.length > 0 && (
+          <section className="synthesis-section" aria-labelledby="wall-material-title">
+            <h3 id="wall-material-title">选择具体普通牌墙</h3>
             <div className="mahjong-synthesis__walls">
               {materialWalls.map(wall => {
-                const isTileWall = wall.mahjongWallKind === 'tile' && wall.mahjongTile
                 const selected = selectedWallKey === positionKey(wall)
-                const label = isTileWall ? getMahjongTileName(wall.mahjongTile!) : '纯墙体'
+                const label = getMahjongTileName(wall.mahjongTile!)
                 return (
                   <button
                     key={positionKey(wall)}
                     type="button"
-                    disabled={!isTileWall || formation === 'pair' || formation === 'kong'}
                     aria-pressed={selected}
-                    aria-label={isTileWall
-                      ? `${selected ? '取消' : '选择'}牌墙材料${label}，${formatPosition(wall)}`
-                      : `纯墙体，${formatPosition(wall)}，不含数牌，不能作为材料`}
+                    aria-label={`${selected ? '取消' : '选择'}牌墙材料${label}，${formatPosition(wall)}`}
                     onClick={() => toggleWall(wall)}
                   >
-                    {isTileWall && <MahjongTile tile={wall.mahjongTile!} compact />}
+                    <MahjongTile tile={wall.mahjongTile!} compact />
                     <span>{label}</span>
-                    <small>{isTileWall ? '吸收牌面后原格变纯墙' : '不能参与合成'}</small>
+                    <small>吸收牌面后原格变纯墙</small>
                   </button>
                 )
               })}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
-        {(formation === 'chow' || formation === 'pung') && (
+        {canUseWhite && (
           <label className="mahjong-synthesis__white">
             <input
               type="checkbox"
-              checked={useWhite}
-              disabled={availableWhiteCount === 0}
+              checked={selectedUseWhite}
               onChange={event => setUseWhite(event.currentTarget.checked)}
             />
             <MahjongTile honor="white" compact />

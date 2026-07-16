@@ -1,21 +1,26 @@
 import {
   getMahjongTileName,
+  MAHJONG_FORMATION_TILE_COUNTS,
   MAHJONG_FORMATION_MECHANICS,
   MAHJONG_GREEN_ATTACHMENT_CONFIG,
   MAHJONG_HONOR_LABELS,
   MAHJONG_RED_ATTACHMENT_CONFIG,
   MAHJONG_SUIT_COMBAT_CONFIG
 } from '../config/mahjong'
-import type {
-  MahjongSynthesisFailure,
-  MahjongSynthesisRecipe
+import {
+  planMahjongSynthesis,
+  type MahjongSynthesisFailure,
+  type MahjongSynthesisRecipe
 } from '../engine/mahjongSynthesis'
 import { calculateMahjongFormationStats } from '../engine/mahjongStats'
 import type { MahjongWallRemovalFailure } from '../engine/mahjongWalls'
 import type {
+  GameStatus,
+  GridCell,
   MahjongAttachment,
   MahjongFormation,
   MahjongRandomStats,
+  MahjongRank,
   MahjongTowerState,
   Tower
 } from '../types/game'
@@ -26,6 +31,150 @@ export const MAHJONG_FORMATION_LABELS: Record<MahjongFormation, string> = {
   chow: '顺子',
   pung: '明刻',
   kong: '杠'
+}
+
+export type MahjongSynthesisTargetFormation = Exclude<MahjongFormation, 'single'>
+
+export interface AvailableMahjongSynthesisOption {
+  recipe: MahjongSynthesisRecipe
+  materialTowerIds: string[]
+  wallPosition: { row: number; col: number } | null
+  useWhite: boolean
+}
+
+export interface MahjongSynthesisAvailabilityRequest {
+  gameStatus: GameStatus
+  anchorTower: Tower
+  fieldTowers: readonly Tower[]
+  walls: readonly GridCell[]
+  availableWhiteCount: number
+}
+
+const CHOW_STARTS: readonly MahjongRank[] = [1, 2, 3, 4, 5, 6, 7]
+
+const SYNTHESIS_RECIPES: readonly MahjongSynthesisRecipe[] = [
+  { formation: 'pair' },
+  ...CHOW_STARTS.map(start => ({
+    formation: 'chow' as const,
+    ranks: [
+      start,
+      (start + 1) as MahjongRank,
+      (start + 2) as MahjongRank
+    ] as const
+  })),
+  { formation: 'pung' },
+  { formation: 'kong' }
+]
+
+function collectTowerMaterialSelections(towers: readonly Tower[]): Tower[][] {
+  const selections: Tower[][] = []
+
+  const visit = (
+    index: number,
+    selected: Tower[],
+    selectedLogicalTileCount: number
+  ) => {
+    if (index === towers.length) {
+      selections.push([...selected])
+      return
+    }
+
+    visit(index + 1, selected, selectedLogicalTileCount)
+
+    const tower = towers[index]
+    const state = tower.mahjongState
+    if (!state) return
+    const nextLogicalTileCount = selectedLogicalTileCount
+      + MAHJONG_FORMATION_TILE_COUNTS[state.formation]
+    // Every target contains at most four logical tiles and the anchor always
+    // contributes at least one. Larger selections can never pass the planner.
+    if (nextLogicalTileCount > 3) return
+
+    selected.push(tower)
+    visit(index + 1, selected, nextLogicalTileCount)
+    selected.pop()
+  }
+
+  visit(0, [], 0)
+  return selections
+}
+
+/**
+ * Enumerates exact, currently committable synthesis choices. The planner remains
+ * the source of truth: the UI only publishes a route or material after at least
+ * one complete combination has passed the same atomic validation as submission.
+ */
+export function getAvailableMahjongSynthesisOptions({
+  gameStatus,
+  anchorTower,
+  fieldTowers,
+  walls,
+  availableWhiteCount
+}: MahjongSynthesisAvailabilityRequest): AvailableMahjongSynthesisOption[] {
+  const materialTowers = fieldTowers.filter(tower => (
+    tower.id !== anchorTower.id && tower.mahjongTile && tower.mahjongState
+  ))
+  const towerSelections = collectTowerMaterialSelections(materialTowers)
+  const tileWalls = walls.filter(wall => (
+    wall.type === 'obstacle'
+      && wall.mahjongWallKind === 'tile'
+      && wall.mahjongTile
+  ))
+  const options: AvailableMahjongSynthesisOption[] = []
+  const anchorLogicalTileCount = anchorTower.mahjongState
+    ? MAHJONG_FORMATION_TILE_COUNTS[anchorTower.mahjongState.formation]
+    : 0
+
+  SYNTHESIS_RECIPES.forEach(recipe => {
+    const allowsCatalysts = recipe.formation === 'chow' || recipe.formation === 'pung'
+    const wallSelections: Array<GridCell | null> = allowsCatalysts
+      ? [null, ...tileWalls]
+      : [null]
+    const whiteSelections = allowsCatalysts && availableWhiteCount > 0
+      ? [0, 1] as const
+      : [0] as const
+
+    towerSelections.forEach(selectedTowers => {
+      const selectedLogicalTileCount = selectedTowers.reduce((count, tower) => (
+        count + MAHJONG_FORMATION_TILE_COUNTS[tower.mahjongState!.formation]
+      ), 0)
+      wallSelections.forEach(selectedWall => {
+        whiteSelections.forEach(whiteCount => {
+          const logicalTileCount = anchorLogicalTileCount
+            + selectedLogicalTileCount
+            + (selectedWall ? 1 : 0)
+            + whiteCount
+          if (logicalTileCount !== MAHJONG_FORMATION_TILE_COUNTS[recipe.formation]) return
+
+          const result = planMahjongSynthesis({
+            gameStatus,
+            anchor: anchorTower,
+            materials: [
+              ...selectedTowers.map(tower => ({ kind: 'tower' as const, tower })),
+              ...(selectedWall
+                ? [{ kind: 'wall' as const, wall: selectedWall }]
+                : [])
+            ],
+            recipe,
+            whiteCount,
+            availableWhiteCount
+          })
+          if (!result.ok) return
+
+          options.push({
+            recipe,
+            materialTowerIds: selectedTowers.map(tower => tower.id),
+            wallPosition: selectedWall
+              ? { row: selectedWall.row, col: selectedWall.col }
+              : null,
+            useWhite: whiteCount === 1
+          })
+        })
+      })
+    })
+  })
+
+  return options
 }
 
 function formatNumber(value: number, maximumFractionDigits = 2): string {

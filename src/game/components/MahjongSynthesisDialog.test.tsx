@@ -4,6 +4,7 @@ import type {
   GridCell,
   MahjongAttachment,
   MahjongFormation,
+  MahjongRank,
   MahjongSuit,
   Tower
 } from '../types/game'
@@ -18,7 +19,7 @@ import {
 function createTower(
   id: string,
   suit: MahjongSuit,
-  rank: 3 | 4,
+  rank: MahjongRank,
   col: number,
   options: {
     formation?: MahjongFormation
@@ -65,7 +66,7 @@ function createTower(
   }
 }
 
-function tileWall(rank: 3 | 4, col: number): GridCell {
+function tileWall(rank: MahjongRank, col: number): GridCell {
   return {
     row: 2,
     col,
@@ -88,16 +89,18 @@ const pureWall: GridCell = {
 }
 
 describe('MahjongSynthesisDialog', () => {
-  it('shows explicit route, active material, wall and preview controls', () => {
+  it('shows only completable routes and materials for the selected route', () => {
     const anchor = createTower('anchor', 'characters', 3, 1)
     const mate = createTower('mate', 'characters', 3, 2)
+    const wrongMate = createTower('wrong-mate', 'characters', 6, 4)
     const markup = renderToStaticMarkup(
       <MahjongSynthesisDialog
         gameStatus="building"
         anchorTower={anchor}
-        fieldTowers={[anchor, mate]}
-        walls={[tileWall(3, 3), pureWall]}
+        fieldTowers={[anchor, mate, wrongMate]}
+        walls={[tileWall(3, 3), tileWall(6, 5), pureWall]}
         availableWhiteCount={1}
+        initialSelection={{ formation: 'pung' }}
         onConfirm={vi.fn(() => ({ ok: true as const, towerId: anchor.id }))}
         onClose={vi.fn()}
       />
@@ -105,13 +108,15 @@ describe('MahjongSynthesisDialog', () => {
 
     expect(markup).toContain('麻将合成工作台')
     expect(markup).toContain('对子')
-    expect(markup).toContain('吃（顺子）')
     expect(markup).toContain('碰（明刻）')
-    expect(markup).toContain('杠')
+    expect(markup).not.toContain('吃（顺子）')
+    expect(markup).not.toContain('>杠<')
     expect(markup).toContain('选择主动材料三萬')
     expect(markup).toContain('选择牌墙材料三萬')
-    expect(markup).toContain('纯墙体')
-    expect(markup).toContain('不能作为材料')
+    expect(markup).not.toContain('选择主动材料六萬')
+    expect(markup).not.toContain('选择牌墙材料六萬')
+    expect(markup).toContain('使用 1 张白替代缺牌')
+    expect(markup).not.toContain('纯墙体')
     expect(markup).toContain('产物固定保留在这里')
     expect(markup).toContain('aria-live="polite"')
     expect(markup).toContain('aria-modal="true"')

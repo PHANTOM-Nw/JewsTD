@@ -22,6 +22,7 @@ import {
 } from './spriteRegistry'
 import {
   getBambooFocusSegmentCount,
+  getMahjongFormationTileLayouts,
   getMahjongFormationStartPulseProgresses,
   getMahjongImpactPulseProgresses,
   getMahjongProjectilePresentations,
@@ -38,7 +39,8 @@ function createCanvasContext() {
     rotate: vi.fn(),
     roundRect: vi.fn(),
     setLineDash: vi.fn(),
-    strokeRect: vi.fn()
+    strokeRect: vi.fn(),
+    translate: vi.fn()
   }
   const ctx = {
     arc: spies.arc,
@@ -61,7 +63,7 @@ function createCanvasContext() {
     setLineDash: spies.setLineDash,
     stroke: vi.fn(),
     strokeRect: spies.strokeRect,
-    translate: vi.fn()
+    translate: spies.translate
   } as unknown as CanvasRenderingContext2D
   return { ctx, spies }
 }
@@ -71,10 +73,17 @@ function createMahjongState(
   suit: MahjongNumberTile['suit'] = 'characters',
   attachments: MahjongTowerState['attachments'] = []
 ): MahjongTowerState {
+  const ranks: Record<MahjongFormation, MahjongNumberTile['rank'][]> = {
+    single: [5],
+    pair: [5, 5],
+    chow: [3, 4, 5],
+    pung: [5, 5, 5],
+    kong: [5, 5, 5, 5]
+  }
   return {
     formation,
     suit,
-    ranks: [5],
+    ranks: ranks[formation],
     containedTileIds: ['tile-1'],
     activeSources: [{
       tileId: 'tile-1',
@@ -170,6 +179,40 @@ function createMahjongTower(
   }
 }
 
+describe('mahjong formation tile layouts', () => {
+  it('fans a chow in exact rank order with the middle tile raised', () => {
+    const layouts = getMahjongFormationTileLayouts('chow', [3, 4, 5])
+
+    expect(layouts.map(layout => layout.rank)).toEqual([3, 4, 5])
+    expect(layouts.map(layout => layout.offsetX)).toEqual([-9, 0, 9])
+    expect(layouts[0].rotationRadians).toBeLessThan(0)
+    expect(layouts[1].rotationRadians).toBe(0)
+    expect(layouts[2].rotationRadians).toBeGreaterThan(0)
+    expect(layouts[1].offsetY).toBeLessThan(layouts[0].offsetY)
+  })
+
+  it('stacks a pung back-to-front with three visible depth offsets', () => {
+    const layouts = getMahjongFormationTileLayouts('pung', [7, 7, 7])
+
+    expect(layouts.map(layout => layout.rank)).toEqual([7, 7, 7])
+    expect(layouts.map(({ offsetX, offsetY }) => [offsetX, offsetY])).toEqual([
+      [-5, -4],
+      [0, 0],
+      [5, 4]
+    ])
+  })
+
+  it('keeps pair and kong card counts visibly distinct', () => {
+    const pair = getMahjongFormationTileLayouts('pair', [2, 2])
+    const kong = getMahjongFormationTileLayouts('kong', [9, 9, 9, 9])
+
+    expect(pair).toHaveLength(2)
+    expect(new Set(pair.map(layout => layout.offsetX)).size).toBe(2)
+    expect(kong).toHaveLength(4)
+    expect(new Set(kong.map(layout => `${layout.offsetX},${layout.offsetY}`)).size).toBe(4)
+  })
+})
+
 describe('canvas placement preview', () => {
   it('renders its hidden tile back without resolving tower or obstacle sprites', () => {
     const resolveImage = vi.fn<(url: string) => CanvasImageSource | null>(() => null)
@@ -240,7 +283,9 @@ describe('canvas mahjong rendering', () => {
       { resolveImage }
     )
 
-    expect(spies.arc.mock.calls.map(([, , radius]) => radius).slice(-4)).toEqual([
+    const radii = spies.arc.mock.calls.map(([, , radius]) => radius)
+    const faceStart = radii.indexOf(8.4)
+    expect(radii.slice(faceStart, faceStart + 4)).toEqual([
       8.4,
       6.1,
       3.8,
@@ -431,6 +476,7 @@ describe('canvas mahjong rendering', () => {
       expect(spies.arc.mock.calls.filter(([, , radius]) => (
         radius === signature.radius
       ))).toHaveLength(signature.count)
+      expect(spies.fillText).toHaveBeenCalledTimes(signature.count * 2)
     }
 
     const { ctx, spies } = createCanvasContext()
@@ -455,6 +501,77 @@ describe('canvas mahjong rendering', () => {
     expect(spies.strokeRect.mock.calls.filter(([, , width, height]) => (
       width === 3 && height === 3
     ))).toHaveLength(4)
+    expect(spies.fillText).toHaveBeenCalledTimes(8)
+  })
+
+  it('draws every chow face in a three-card fan', () => {
+    const { ctx, spies } = createCanvasContext()
+    const tower = createMahjongTower(
+      'chow-faces',
+      { id: 'chow-anchor', suit: 'characters', rank: 4, copy: 1 },
+      100,
+      100
+    )
+    tower.mahjongState = {
+      ...createMahjongState('chow'),
+      ranks: [3, 4, 5]
+    }
+
+    renderGameScene(ctx, {
+      grid: initializeGrid(),
+      currentPath: null,
+      placementPreview: null,
+      enemies: [],
+      towers: [tower],
+      bullets: [],
+      damageNumbers: [],
+      gameTime: 0
+    }, { resolveImage: () => null })
+
+    expect(spies.fillText.mock.calls.map(([text]) => text)).toEqual([
+      '三', '萬', '四', '萬', '五', '萬'
+    ])
+    expect(spies.rotate.mock.calls).toContainEqual([-Math.PI / 15])
+    expect(spies.rotate.mock.calls).toContainEqual([Math.PI / 15])
+    expect(spies.translate.mock.calls).toEqual(expect.arrayContaining([
+      [91, 102],
+      [100, 99],
+      [109, 102]
+    ]))
+  })
+
+  it('draws a pung as three same-face cards with diagonal depth', () => {
+    const { ctx, spies } = createCanvasContext()
+    const tower = createMahjongTower(
+      'pung-faces',
+      { id: 'pung-anchor', suit: 'characters', rank: 7, copy: 1 },
+      100,
+      100
+    )
+    tower.mahjongState = {
+      ...createMahjongState('pung'),
+      ranks: [7, 7, 7]
+    }
+
+    renderGameScene(ctx, {
+      grid: initializeGrid(),
+      currentPath: null,
+      placementPreview: null,
+      enemies: [],
+      towers: [tower],
+      bullets: [],
+      damageNumbers: [],
+      gameTime: 0
+    }, { resolveImage: () => null })
+
+    expect(spies.fillText.mock.calls.map(([text]) => text)).toEqual([
+      '七', '萬', '七', '萬', '七', '萬'
+    ])
+    expect(spies.translate.mock.calls).toEqual(expect.arrayContaining([
+      [95, 96],
+      [100, 100],
+      [105, 104]
+    ]))
   })
 
   it('layers suit core, red flame and green seal without hiding the tile face', () => {

@@ -68,6 +68,60 @@ const MAHJONG_CHOW_PROJECTILE_STAGGER_MS = 60
 const MAHJONG_CHOW_PROJECTILE_CATCHUP_MS = 90
 const MAHJONG_IMPACT_PULSE_DURATION_MS = 220
 
+export interface MahjongFormationTileLayout {
+  rank: MahjongNumberTile['rank']
+  offsetX: number
+  offsetY: number
+  rotationRadians: number
+  height: number
+}
+
+const MAHJONG_FORMATION_TILE_GEOMETRY: Record<
+  MahjongFormation,
+  readonly Omit<MahjongFormationTileLayout, 'rank'>[]
+> = {
+  single: [
+    { offsetX: 0, offsetY: 0, rotationRadians: 0, height: MAHJONG_TOWER_HEIGHT }
+  ],
+  pair: [
+    { offsetX: -6, offsetY: 1, rotationRadians: -Math.PI / 45, height: 25 },
+    { offsetX: 6, offsetY: 1, rotationRadians: Math.PI / 45, height: 25 }
+  ],
+  chow: [
+    { offsetX: -9, offsetY: 2, rotationRadians: -Math.PI / 15, height: 23 },
+    { offsetX: 0, offsetY: -1, rotationRadians: 0, height: 23 },
+    { offsetX: 9, offsetY: 2, rotationRadians: Math.PI / 15, height: 23 }
+  ],
+  pung: [
+    { offsetX: -5, offsetY: -4, rotationRadians: 0, height: 26 },
+    { offsetX: 0, offsetY: 0, rotationRadians: 0, height: 26 },
+    { offsetX: 5, offsetY: 4, rotationRadians: 0, height: 26 }
+  ],
+  kong: [
+    { offsetX: -7, offsetY: -7, rotationRadians: -Math.PI / 90, height: 20 },
+    { offsetX: 7, offsetY: -7, rotationRadians: Math.PI / 90, height: 20 },
+    { offsetX: -7, offsetY: 7, rotationRadians: Math.PI / 90, height: 20 },
+    { offsetX: 7, offsetY: 7, rotationRadians: -Math.PI / 90, height: 20 }
+  ]
+}
+
+/**
+ * Maps the authoritative logical faces stored on a Mahjong tower to a compact
+ * formation layout. Rendering order is back-to-front, which gives pung its
+ * visible stacked depth without inventing or duplicating tile entities.
+ */
+export function getMahjongFormationTileLayouts(
+  formation: MahjongFormation,
+  ranks: readonly MahjongNumberTile['rank'][]
+): MahjongFormationTileLayout[] {
+  return MAHJONG_FORMATION_TILE_GEOMETRY[formation]
+    .slice(0, ranks.length)
+    .map((geometry, index) => ({
+      ...geometry,
+      rank: ranks[index]
+    }))
+}
+
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value))
 }
@@ -411,12 +465,15 @@ function drawMahjongTileBody(
   centerX: number,
   centerY: number,
   height: number,
-  tile: Pick<MahjongNumberTile, 'suit' | 'rank'>
+  tile: Pick<MahjongNumberTile, 'suit' | 'rank'>,
+  rotationRadians = 0
 ) {
   const width = height * MAHJONG_TILE_ASPECT_RATIO
 
   ctx.save()
-  ctx.translate(centerX - width / 2, centerY - height / 2)
+  ctx.translate(centerX, centerY)
+  if (rotationRadians !== 0) ctx.rotate(rotationRadians)
+  ctx.translate(-width / 2, -height / 2)
   ctx.scale(width / 40, height / 54)
   ctx.shadowColor = 'rgba(48, 39, 24, 0.28)'
   ctx.shadowBlur = 4
@@ -916,14 +973,6 @@ function drawMahjongTowerVisuals(
   const formation = state?.formation ?? 'single'
   const attachments = state?.attachments ?? []
   drawMahjongSuitCore(ctx, tower.position.x, tower.position.y, suit, gameTime)
-  drawMahjongFormationMark(
-    ctx,
-    tower.position.x,
-    tower.position.y,
-    formation,
-    suit,
-    gameTime
-  )
   drawMahjongFormationAttackStart(ctx, tower, formation, suit, gameTime)
   if (attachments.includes('red')) {
     drawRedAttachment(ctx, tower.position.x, tower.position.y, gameTime)
@@ -962,12 +1011,28 @@ function drawTower(
       flawless: 1.04
     }[tower.level]
     drawMahjongTowerVisuals(ctx, tower, gameTime, bambooFocus)
-    drawMahjongTileBody(
+    const state = tower.mahjongState
+    const formation = state?.formation ?? 'single'
+    const suit = state?.suit ?? tower.mahjongTile.suit
+    const ranks = state?.ranks ?? [tower.mahjongTile.rank]
+    const layouts = getMahjongFormationTileLayouts(formation, ranks)
+    layouts.forEach(layout => {
+      drawMahjongTileBody(
+        ctx,
+        tower.position.x + layout.offsetX * qualityScale,
+        tower.position.y + layout.offsetY * qualityScale,
+        layout.height * qualityScale,
+        { suit, rank: layout.rank },
+        layout.rotationRadians
+      )
+    })
+    drawMahjongFormationMark(
       ctx,
       tower.position.x,
       tower.position.y,
-      MAHJONG_TOWER_HEIGHT * qualityScale,
-      tower.mahjongTile
+      formation,
+      suit,
+      gameTime
     )
     return
   }
