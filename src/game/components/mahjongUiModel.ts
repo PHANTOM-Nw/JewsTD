@@ -1,11 +1,14 @@
 import {
   getMahjongTileName,
+  MAHJONG_ATTACHMENT_CAPACITY,
   MAHJONG_FORMATION_TILE_COUNTS,
   MAHJONG_FORMATION_MECHANICS,
   MAHJONG_GREEN_ATTACHMENT_CONFIG,
   MAHJONG_HONOR_LABELS,
   MAHJONG_RED_ATTACHMENT_CONFIG,
-  MAHJONG_SUIT_COMBAT_CONFIG
+  MAHJONG_SUIT_COMBAT_CONFIG,
+  MAHJONG_SUIT_LABELS,
+  MAHJONG_WHITE_CATALYST_CONFIG
 } from '../config/mahjong'
 import {
   planMahjongSynthesis,
@@ -19,6 +22,7 @@ import type {
   GridCell,
   MahjongAttachment,
   MahjongFormation,
+  MahjongHonor,
   MahjongRandomStats,
   MahjongRank,
   MahjongTowerState,
@@ -278,6 +282,75 @@ export function getMahjongAbilitySummary(
   }
 
   return summary
+}
+
+export interface MahjongHonorDescription {
+  honor: MahjongHonor
+  title: string
+  kind: 'attachment' | 'catalyst'
+  effects: string[]
+  usageNote: string
+}
+
+/**
+ * Player-facing explanation of a 中/發/白 tile before it is committed. All
+ * figures are derived from the Mahjong config so the copy tracks tuning; 中/發
+ * are attachments gated by MAHJONG_ATTACHMENT_CAPACITY, 白 is a synthesis catalyst.
+ */
+export function getMahjongHonorDescription(honor: MahjongHonor): MahjongHonorDescription {
+  const attachmentUsageNote = [
+    '只能附着到有容量且未携带同种功能牌的持久激活塔：',
+    `${MAHJONG_FORMATION_LABELS.single}、${MAHJONG_FORMATION_LABELS.pair}各有 ${MAHJONG_ATTACHMENT_CAPACITY.single} 个附着位，`,
+    `${MAHJONG_FORMATION_LABELS.chow}、${MAHJONG_FORMATION_LABELS.pung}、${MAHJONG_FORMATION_LABELS.kong}各有 ${MAHJONG_ATTACHMENT_CAPACITY.chow} 个附着位；`,
+    '同种功能牌不可重复附着，使用后消耗并在本局持续生效。'
+  ].join('')
+
+  if (honor === 'red') {
+    const red = MAHJONG_RED_ATTACHMENT_CONFIG
+    return {
+      honor,
+      title: MAHJONG_HONOR_LABELS.red,
+      kind: 'attachment',
+      effects: [
+        `本次攻击总原始伤害×${formatNumber(red.damageMultiplier)}`,
+        `暴击率增加${formatPercent(red.critChanceBonus)}个百分点`,
+        `原本没有暴击的${MAHJONG_SUIT_LABELS.bamboo}、${MAHJONG_SUIT_LABELS.dots}使用默认暴伤×${formatNumber(red.defaultCritMultiplier)}，${MAHJONG_SUIT_LABELS.characters}保留自身暴击倍率`,
+        `命中附加灼烧${formatNumber(red.burn.damagePerSecond)}/秒、持续${formatSeconds(red.burn.durationMs)}秒（不叠层，重复命中刷新持续时间）`
+      ],
+      usageNote: attachmentUsageNote
+    }
+  }
+
+  if (honor === 'green') {
+    const green = MAHJONG_GREEN_ATTACHMENT_CONFIG
+    return {
+      honor,
+      title: MAHJONG_HONOR_LABELS.green,
+      kind: 'attachment',
+      effects: [
+        `${MAHJONG_SUIT_LABELS.characters}：普通敌人生命低于${formatPercent(green.characters.executeHealthRatio)}%、Boss 低于${formatPercent(green.characters.bossExecuteHealthRatio)}%时处决`,
+        `${MAHJONG_SUIT_LABELS.bamboo}：连续命中同一目标每层攻击频率+${formatPercent(green.bamboo.attackFrequencyBonusPerHit)}%，最多${green.bamboo.maxStacks}层，${formatSeconds(green.bamboo.resetAfterMs)}秒未命中或换目标重置`,
+        `${MAHJONG_SUIT_LABELS.dots}：每次命中${formatPercent(green.dots.stunChance)}%概率眩晕，普通敌人${formatSeconds(green.dots.stunDurationMs)}秒、Boss ${formatSeconds(green.dots.bossStunDurationMs)}秒`
+      ],
+      usageNote: attachmentUsageNote
+    }
+  }
+
+  const white = MAHJONG_WHITE_CATALYST_CONFIG
+  const allowedLabel = white.allowedFormations
+    .map(formation => MAHJONG_FORMATION_LABELS[formation])
+    .join('或')
+  return {
+    honor,
+    title: MAHJONG_HONOR_LABELS.white,
+    kind: 'catalyst',
+    effects: [
+      `只能在${allowedLabel}中作为万能材料替代缺失的逻辑牌位`,
+      `每次合成最多使用 ${white.maxPerSynthesis} 张，成功确认后才消耗`,
+      '不提供实体数牌、随机属性或附着，也不能作为锚点'
+    ],
+    usageNote: `白无法直接激活或附着，只能在合成工作台里作为${allowedLabel}的催化材料使用。`
+  }
 }
 
 export function getMahjongPairRouteHint(

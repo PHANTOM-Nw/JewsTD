@@ -12,8 +12,9 @@ import {
 import { MahjongTile } from './MahjongTile'
 import { MahjongSynthesisDialog } from './MahjongSynthesisDialog'
 import { MahjongWallDetail } from './MahjongWallDetail'
+import { MahjongHonorDetail } from './MahjongHonorDetail'
 import { WaveCompletionNotice } from './WaveCompletionNotice'
-import type { GridCell, MahjongAttachment, Tower } from '../types/game'
+import type { GridCell, MahjongAttachment, MahjongHonor, Tower } from '../types/game'
 import {
   getMahjongTileName,
   MAHJONG_HONOR_LABELS
@@ -62,6 +63,7 @@ export const TowerDefenseGame: React.FC = () => {
   const [selectedSynthesisAnchor, setSelectedSynthesisAnchor] = useState<Tower | null>(null)
   const [selectedWall, setSelectedWall] = useState<GridCell | null>(null)
   const [pendingAttachment, setPendingAttachment] = useState<MahjongAttachment | null>(null)
+  const [honorDetail, setHonorDetail] = useState<MahjongHonor | null>(null)
   const [mahjongActionMessage, setMahjongActionMessage] = useState('')
 
   const activeTowers = gameStateRef.current.towers.filter(tower => (
@@ -158,6 +160,7 @@ export const TowerDefenseGame: React.FC = () => {
     if (!preparation) {
       setSelectedSynthesisAnchor(null)
       setSelectedWall(null)
+      setHonorDetail(null)
     }
     if (!preparation) setPendingAttachment(null)
   }, [uiState.gameStatus])
@@ -235,6 +238,7 @@ export const TowerDefenseGame: React.FC = () => {
     setSelectedSynthesisAnchor(null)
     setSelectedWall(null)
     setPendingAttachment(null)
+    setHonorDetail(null)
     setMahjongActionMessage('')
   }
 
@@ -342,13 +346,10 @@ export const TowerDefenseGame: React.FC = () => {
           onTilePointerDown={beginTileDrag}
           onKeepHand={keepMahjongHand}
           onGambleForHonor={gambleForMahjongHonor}
-          onSelectFunctionTile={attachment => {
-            setPendingAttachment(attachment)
+          onSelectFunctionTile={honor => {
             setSelectedSynthesisAnchor(null)
             setSelectedWall(null)
-            setMahjongActionMessage(
-              `已选择${MAHJONG_HONOR_LABELS[attachment]}，请在地图或键盘列表中选择激活棋子。`
-            )
+            setHonorDetail(honor)
           }}
           onStartWave={startWave}
           onPause={pause}
@@ -376,6 +377,21 @@ export const TowerDefenseGame: React.FC = () => {
           gameStatus={uiState.gameStatus}
           onRemove={removeMahjongWall}
           onClose={() => setSelectedWall(null)}
+        />
+      )}
+
+      {honorDetail && (
+        <MahjongHonorDetail
+          honor={honorDetail}
+          canAttach={uiState.gameStatus === 'building' || uiState.gameStatus === 'ready'}
+          onConfirm={attachment => {
+            setPendingAttachment(attachment)
+            setMahjongActionMessage(
+              `已选择${MAHJONG_HONOR_LABELS[attachment]}，请在地图或键盘列表中选择激活棋子。`
+            )
+            setHonorDetail(null)
+          }}
+          onClose={() => setHonorDetail(null)}
         />
       )}
 

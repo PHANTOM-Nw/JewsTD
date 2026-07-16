@@ -1097,6 +1097,20 @@
 .mahjong-wall-detail__cost div { display: flex; justify-content: space-between; padding: 5px 7px; border-radius: 7px; font-size: 11px; background: #fff5d4; }
 .mahjong-wall-detail__cost dd { margin: 0; font-weight: 900; }
 
+.mahjong-honor-detail__body {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px;
+  border-radius: 11px;
+  background: #fff9e9;
+}
+
+.mahjong-honor-detail__body > div { display: flex; flex-direction: column; gap: 4px; }
+.mahjong-honor-detail__effects { margin: 0; padding-left: 18px; font-size: 11px; line-height: 1.4; }
+.mahjong-honor-detail__effects li { margin: 2px 0; }
+.mahjong-honor-detail__usage { margin: 10px 0; font-size: 10px; line-height: 1.4; color: #855115; }
+
 .mahjong-wall-detail__remove {
   display: flex;
   min-height: 44px;

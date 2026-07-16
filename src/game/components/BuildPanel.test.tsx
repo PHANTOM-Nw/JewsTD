@@ -177,7 +177,7 @@ describe('BuildPanel hand resolution choice', () => {
 })
 
 describe('BuildPanel function tile actions', () => {
-  it('offers accessible red and green target actions while reserving white for synthesis', () => {
+  it('offers accessible red and green target actions and a clickable white detail entry', () => {
     const selectFunctionTile = vi.fn()
     const panel = BuildPanel({
       wood: 3,
@@ -197,11 +197,10 @@ describe('BuildPanel function tile actions', () => {
     expect(markup).toContain('功能牌区')
     expect(markup).toContain('选择中，然后选择一座激活棋子附着')
     expect(markup).toContain('选择發，然后选择一座激活棋子附着')
-    expect(markup).toContain('白，只能在吃或碰的合成工作台中作为材料')
+    expect(markup).toContain('查看白板的合成催化说明')
 
     const strip = FunctionTileStrip({
       tiles: ['red', 'green', 'white'],
-      canAttach: true,
       onSelect: selectFunctionTile
     })
     const selectRed = findElement(strip, element => (
@@ -209,8 +208,15 @@ describe('BuildPanel function tile actions', () => {
     ))
     selectRed?.props.onClick?.()
 
-    expect(selectFunctionTile).toHaveBeenCalledOnce()
     expect(selectFunctionTile).toHaveBeenCalledWith('red')
+
+    const selectWhite = findElement(strip, element => (
+      element.props['aria-label'] === '查看白板的合成催化说明'
+    ))
+    selectWhite?.props.onClick?.()
+
+    expect(selectFunctionTile).toHaveBeenCalledWith('white')
+    expect(selectFunctionTile).toHaveBeenCalledTimes(2)
   })
 
   it('keeps target actions enabled in ready before the wave starts', () => {
@@ -232,11 +238,10 @@ describe('BuildPanel function tile actions', () => {
 
     expect(markup).toContain('功能牌区')
     expect(markup).toContain('选择中，然后选择一座激活棋子附着')
-    expect(markup).toContain('白，只能在吃或碰的合成工作台中作为材料')
+    expect(markup).toContain('查看白板的合成催化说明')
 
     const strip = FunctionTileStrip({
       tiles: ['red', 'white'],
-      canAttach: true,
       onSelect: vi.fn()
     })
     const selectRed = findElement(strip, element => (

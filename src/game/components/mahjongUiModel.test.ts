@@ -1,4 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import {
+  MAHJONG_ATTACHMENT_CAPACITY,
+  MAHJONG_GREEN_ATTACHMENT_CONFIG,
+  MAHJONG_HONOR_LABELS,
+  MAHJONG_RED_ATTACHMENT_CONFIG,
+  MAHJONG_SUIT_LABELS,
+  MAHJONG_WHITE_CATALYST_CONFIG
+} from '../config/mahjong'
 import type {
   GridCell,
   MahjongAttachment,
@@ -11,6 +19,7 @@ import type {
 import {
   getAvailableMahjongSynthesisOptions,
   getMahjongAbilitySummary,
+  getMahjongHonorDescription,
   getMahjongPairRouteHint,
   getMahjongStateFinalStats,
   getMahjongTowerActionLabel,
@@ -323,5 +332,72 @@ describe('available Mahjong synthesis options', () => {
 
     expect(getFormations(available)).toContain('kong')
     expect(getFormations(unavailable)).not.toContain('kong')
+  })
+})
+
+describe('mahjong honor descriptions', () => {
+  const formatNumber = (value: number, maximumFractionDigits = 2) =>
+    value.toLocaleString('zh-CN', { maximumFractionDigits, useGrouping: false })
+  const formatPercent = (value: number) => formatNumber(value * 100)
+  const formatSeconds = (durationMs: number) => formatNumber(durationMs / 1000, 2)
+
+  it('describes 中 as an attachment sourced entirely from the red config', () => {
+    const red = getMahjongHonorDescription('red')
+    const config = MAHJONG_RED_ATTACHMENT_CONFIG
+
+    expect(red.honor).toBe('red')
+    expect(red.kind).toBe('attachment')
+    expect(red.title).toBe(MAHJONG_HONOR_LABELS.red)
+
+    const joined = red.effects.join('\n')
+    expect(joined).toContain(`×${formatNumber(config.damageMultiplier)}`)
+    expect(joined).toContain(`${formatPercent(config.critChanceBonus)}个百分点`)
+    expect(joined).toContain(`×${formatNumber(config.defaultCritMultiplier)}`)
+    expect(joined).toContain(`${formatNumber(config.burn.damagePerSecond)}/秒`)
+    expect(joined).toContain(`${formatSeconds(config.burn.durationMs)}秒`)
+
+    expect(red.usageNote).toContain(`${MAHJONG_ATTACHMENT_CAPACITY.single} 个附着位`)
+    expect(red.usageNote).toContain(`${MAHJONG_ATTACHMENT_CAPACITY.chow} 个附着位`)
+  })
+
+  it('lists 發 effects per suit from the green config', () => {
+    const green = getMahjongHonorDescription('green')
+    const config = MAHJONG_GREEN_ATTACHMENT_CONFIG
+
+    expect(green.honor).toBe('green')
+    expect(green.kind).toBe('attachment')
+    expect(green.title).toBe(MAHJONG_HONOR_LABELS.green)
+    expect(green.effects).toHaveLength(3)
+
+    const [characters, bamboo, dots] = green.effects
+    expect(characters).toContain(MAHJONG_SUIT_LABELS.characters)
+    expect(characters).toContain(`${formatPercent(config.characters.executeHealthRatio)}%`)
+    expect(characters).toContain(`${formatPercent(config.characters.bossExecuteHealthRatio)}%`)
+    expect(bamboo).toContain(MAHJONG_SUIT_LABELS.bamboo)
+    expect(bamboo).toContain(`+${formatPercent(config.bamboo.attackFrequencyBonusPerHit)}%`)
+    expect(bamboo).toContain(`${config.bamboo.maxStacks}层`)
+    expect(bamboo).toContain(`${formatSeconds(config.bamboo.resetAfterMs)}秒`)
+    expect(dots).toContain(MAHJONG_SUIT_LABELS.dots)
+    expect(dots).toContain(`${formatPercent(config.dots.stunChance)}%`)
+    expect(dots).toContain(`${formatSeconds(config.dots.stunDurationMs)}秒`)
+    expect(dots).toContain(`${formatSeconds(config.dots.bossStunDurationMs)}秒`)
+
+    // 中和發共享容量文案，容量数字来自 config。
+    expect(green.usageNote).toContain(`${MAHJONG_ATTACHMENT_CAPACITY.single} 个附着位`)
+    expect(green.usageNote).toContain(`${MAHJONG_ATTACHMENT_CAPACITY.chow} 个附着位`)
+  })
+
+  it('describes 白 as a catalyst without any attachment-capacity copy', () => {
+    const white = getMahjongHonorDescription('white')
+
+    expect(white.honor).toBe('white')
+    expect(white.kind).toBe('catalyst')
+    expect(white.title).toBe(MAHJONG_HONOR_LABELS.white)
+    expect(white.effects.join('\n')).toContain(
+      `${MAHJONG_WHITE_CATALYST_CONFIG.maxPerSynthesis} 张`
+    )
+    // 催化不占附着容量：白说明不复用容量文案。
+    expect(white.usageNote).not.toContain('附着位')
+    expect(getMahjongHonorDescription('red').usageNote).toContain('附着位')
   })
 })

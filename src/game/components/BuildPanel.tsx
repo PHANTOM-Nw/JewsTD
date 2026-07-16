@@ -14,7 +14,6 @@ import { WAVES } from '../config/waves'
 import type {
   GameStatus,
   MahjongHonor,
-  MahjongAttachment,
   MahjongRoundTileView,
   MahjongSuit
 } from '../types/game'
@@ -35,7 +34,7 @@ interface BuildPanelProps {
   onTilePointerDown?: (tileId: string, pointerId: number) => void
   onKeepHand?: (tileId: string) => void
   onGambleForHonor?: () => void
-  onSelectFunctionTile?: (attachment: MahjongAttachment) => void
+  onSelectFunctionTile?: (honor: MahjongHonor) => void
   onStartWave?: () => void
   onPause?: () => void
   onResume?: () => void
@@ -91,12 +90,10 @@ function getPhaseCopy(
 
 export function FunctionTileStrip({
   tiles,
-  canAttach,
   onSelect
 }: {
   tiles: MahjongHonor[]
-  canAttach: boolean
-  onSelect?: (attachment: MahjongAttachment) => void
+  onSelect?: (honor: MahjongHonor) => void
 }) {
   return (
     <div className="mahjong-functions" aria-label="功能牌区">
@@ -106,21 +103,23 @@ export function FunctionTileStrip({
       ) : (
         <div>
           {tiles.map((honor, index) => honor === 'white' ? (
-            <span
+            <button
               key={`${honor}-${index}`}
+              type="button"
               className="mahjong-function-tile mahjong-function-tile--white"
-              title="白只在吃或碰时作为万能材料"
-              aria-label="白，只能在吃或碰的合成工作台中作为材料"
+              disabled={!onSelect}
+              onClick={() => onSelect?.('white')}
+              aria-label={`查看${MAHJONG_HONOR_LABELS.white}的合成催化说明`}
             >
               <MahjongTile honor={honor} compact />
               <small>合成材料</small>
-            </span>
+            </button>
           ) : (
             <button
               key={`${honor}-${index}`}
               type="button"
               className={`mahjong-function-tile mahjong-function-tile--${honor}`}
-              disabled={!canAttach || !onSelect}
+              disabled={!onSelect}
               onClick={() => onSelect?.(honor)}
               aria-label={`选择${MAHJONG_HONOR_LABELS[honor]}，然后选择一座激活棋子附着`}
             >
@@ -284,7 +283,6 @@ export function BuildPanel({
       {(gameStatus === 'building' || gameStatus === 'ready') && (
         <FunctionTileStrip
           tiles={functionTiles}
-          canAttach={gameStatus === 'building' || gameStatus === 'ready'}
           onSelect={onSelectFunctionTile}
         />
       )}
