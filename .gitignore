@@ -15,7 +15,6 @@ dist-ssr
 *.rej
 
 # Agent instruction files (local only)
-AGENTS.md
 CLAUDE.md
 
 # Editor directories and files
