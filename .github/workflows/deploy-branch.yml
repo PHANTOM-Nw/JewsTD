@@ -1,0 +1,182 @@
+name: Manual deploy
+
+run-name: Manual deploy of ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-deploy
+  # A production deployment must not be interrupted halfway through rsync.
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Lint, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload production artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-dist-${{ github.sha }}-${{ github.run_id }}
+          path: dist/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  deploy:
+    name: Deploy selected ref
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+
+    steps:
+      - name: Download production artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: manual-dist-${{ github.sha }}-${{ github.run_id }}
+          path: dist
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_PATH; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Actions variable ${name} is required in the production environment."
+              exit 1
+            fi
+          done
+
+          if [[ ! "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            echo '::error::DEPLOY_HOST must be a DNS name or IPv4 address.'
+            exit 1
+          fi
+
+          if [[ ! "$DEPLOY_PORT" =~ ^[0-9]+$ ]] ||
+            (( 10#$DEPLOY_PORT < 1 || 10#$DEPLOY_PORT > 65535 )); then
+            echo '::error::DEPLOY_PORT must be an integer from 1 to 65535.'
+            exit 1
+          fi
+
+          if [[ ! "$DEPLOY_USER" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo '::error::DEPLOY_USER contains unsupported characters.'
+            exit 1
+          fi
+
+          if [[ ! "$DEPLOY_PATH" =~ ^/opt/JewsTD/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*/?$ ]]; then
+            echo '::error::DEPLOY_PATH must be a safe directory below /opt/JewsTD/.'
+            exit 1
+          fi
+
+      - name: Configure SSH host verification
+        shell: bash
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$DEPLOY_SSH_PRIVATE_KEY" ]]; then
+            echo '::error::Secret DEPLOY_SSH_PRIVATE_KEY is required.'
+            exit 1
+          fi
+
+          if [[ -z "$DEPLOY_KNOWN_HOSTS" ]]; then
+            echo '::error::Secret DEPLOY_KNOWN_HOSTS is required.'
+            exit 1
+          fi
+
+          install -m 700 -d "$HOME/.ssh"
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+          if ! ssh-keygen -y -P '' -f "$HOME/.ssh/deploy_key" > /dev/null; then
+            echo '::error::DEPLOY_SSH_PRIVATE_KEY must be a valid unencrypted private key.'
+            exit 1
+          fi
+
+          known_host="$DEPLOY_HOST"
+          if [[ "$DEPLOY_PORT" != '22' ]]; then
+            known_host="[$DEPLOY_HOST]:$DEPLOY_PORT"
+          fi
+
+          if ! ssh-keygen -F "$known_host" -f "$HOME/.ssh/known_hosts" > /dev/null; then
+            echo "::error::DEPLOY_KNOWN_HOSTS has no entry for ${known_host}."
+            exit 1
+          fi
+
+          {
+            echo 'Host jewstd-production'
+            echo "  HostName $DEPLOY_HOST"
+            echo "  Port $DEPLOY_PORT"
+            echo "  User $DEPLOY_USER"
+            echo "  IdentityFile $HOME/.ssh/deploy_key"
+            echo '  IdentitiesOnly yes'
+            echo '  BatchMode yes'
+            echo '  StrictHostKeyChecking yes'
+            echo "  UserKnownHostsFile $HOME/.ssh/known_hosts"
+            echo '  ConnectTimeout 15'
+            echo '  LogLevel ERROR'
+          } > "$HOME/.ssh/config"
+
+      - name: Verify remote deployment directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! ssh jewstd-production \
+            "test -d '$DEPLOY_PATH' && test -w '$DEPLOY_PATH' && test -x '$DEPLOY_PATH' && test ! -L '$DEPLOY_PATH'"; then
+            echo '::error::DEPLOY_PATH must exist, be writable and searchable, and not be a symlink.'
+            exit 1
+          fi
+
+      - name: Deploy static files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync \
+            --archive \
+            --no-owner \
+            --no-group \
+            --compress \
+            --delete-delay \
+            --delay-updates \
+            --itemize-changes \
+            --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
+            -e ssh \
+            dist/ \
+            "jewstd-production:${DEPLOY_PATH%/}/"
