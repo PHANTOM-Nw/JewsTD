@@ -217,7 +217,7 @@
 
 .action-deck {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.45fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 7px;
   padding: 8px;
   border: 3px solid #d99b32;
@@ -226,31 +226,47 @@
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72), var(--panel-shadow);
 }
 
-.action-deck__phase {
+.game-phase-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 35;
   display: flex;
+  width: max-content;
+  max-width: min(calc(100% - 28px), 270px);
   min-width: 0;
-  flex-direction: column;
+  align-items: baseline;
   justify-content: center;
-  padding: 6px 8px;
+  gap: 5px;
+  padding: 5px 9px;
+  transform: translateX(-50%);
   border: 2px solid rgba(194, 121, 28, 0.5);
-  border-radius: 10px;
-  background: rgba(255, 249, 225, 0.82);
+  border-radius: 999px;
+  pointer-events: none;
+  background: rgba(255, 249, 225, 0.94);
+  box-shadow: 0 3px 10px rgba(82, 48, 12, 0.2);
 }
 
-.action-deck__phase span {
-  font-size: 13px;
+.game-phase-hint span {
+  flex: 0 0 auto;
+  font-size: 11px;
   font-weight: 900;
   color: #5b982e;
+  white-space: nowrap;
 }
 
-.action-deck__phase strong {
-  margin-top: 3px;
-  font-size: 10px;
-  line-height: 1.25;
+.game-phase-hint strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 9px;
+  line-height: 1.2;
   color: #7b552e;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-deck__primary {
+  grid-column: 1 / -1;
   display: flex;
   min-width: 0;
   min-height: 48px;
@@ -282,18 +298,8 @@
   box-shadow: inset 0 0 0 2px rgba(255, 247, 166, 0.7), 0 1px 0 #9f5d13;
 }
 
-.action-deck__primary--status {
-  min-height: 44px;
-  align-self: center;
-  padding: 6px 10px;
-  cursor: default;
-}
-
-.action-deck--building .action-deck__phase,
-.action-deck--resolving_hand .action-deck__phase,
 .action-deck--building .mahjong-tray,
 .action-deck--resolving_hand .mahjong-hand-resolution,
-.action-deck--resolving_hand .action-deck__primary--status,
 .mahjong-gamble-result,
 .mahjong-held-summary,
 .mahjong-functions {

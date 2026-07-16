@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { GameStatus, MahjongRoundTileView } from '../types/game'
-import { BuildPanel, FunctionTileStrip } from './BuildPanel'
+import { BuildPanel, FunctionTileStrip, GamePhaseHint } from './BuildPanel'
 
 type ElementProps = {
   children?: ReactNode
@@ -287,15 +287,12 @@ describe('BuildPanel primary action by phase', () => {
     expect(renderPhase('building')).not.toContain('action-deck__primary')
   })
 
-  it.each([
-    ['deciding', '选择 1 张激活'],
-    ['resolving_hand', '保留 1 张手牌']
-  ] as const)('renders %s as a compact non-interactive status', (gameStatus, label) => {
+  it.each(['building', 'deciding', 'resolving_hand'] as const)(
+    'leaves %s guidance to the board-top hint instead of taking deck space', gameStatus => {
     const markup = renderPhase(gameStatus)
 
-    expect(markup).toContain('action-deck__primary action-deck__primary--status')
-    expect(markup).toContain(label)
-    expect(markup).not.toMatch(/<button[^>]*action-deck__primary--status/)
+    expect(markup).not.toContain('action-deck__primary')
+    expect(markup).not.toContain('game-phase-hint')
   })
 
   it.each([
@@ -311,10 +308,49 @@ describe('BuildPanel primary action by phase', () => {
     expect(markup).toContain(label)
   })
 
-  it('places the first-wave action beside the phase copy before auxiliary rows', () => {
+  it('places the first-wave action before auxiliary rows', () => {
     const markup = renderPhase('ready')
 
     expect(markup.indexOf('action-deck__primary--action'))
       .toBeLessThan(markup.indexOf('mahjong-functions'))
+  })
+})
+
+describe('GamePhaseHint compact copy', () => {
+  const renderHint = (
+    gameStatus: GameStatus,
+    canGambleForHonor = false
+  ) => renderToStaticMarkup(
+    <GamePhaseHint
+      placedCount={2}
+      gameStatus={gameStatus}
+      canGambleForHonor={canGambleForHonor}
+    />
+  )
+
+  it.each([
+    ['building', '建造 2/3', '拖牌到地图，落地即翻开'],
+    ['deciding', '三选一', '激活 1 张，其余 2 张变牌墙'],
+    ['ready', '备战完成', '可整备，或开始下一波'],
+    ['playing', '战斗中', '棋子正在自动攻击'],
+    ['paused', '已暂停', '检查路线后继续'],
+    ['game_over', '矿坑失守', '调整落牌和留牌策略再来'],
+    ['victory', '胜利', '全部波次完成']
+  ] as const)('renders concise %s guidance', (gameStatus, eyebrow, detail) => {
+    const markup = renderHint(gameStatus)
+
+    expect(markup).toContain(`game-phase-hint--${gameStatus}`)
+    expect(markup).toContain(eyebrow)
+    expect(markup).toContain(detail)
+    expect(markup).toContain('aria-live="polite"')
+  })
+
+  it('keeps hand ranks private in both hand-resolution variants', () => {
+    const keepMarkup = renderHint('resolving_hand')
+    const gambleMarkup = renderHint('resolving_hand', true)
+
+    expect(keepMarkup).toContain('看花色留 1 张，点数仍保密')
+    expect(gambleMarkup).toContain('点数保密：留 1 张或三张赌功能牌')
+    expect(`${keepMarkup}${gambleMarkup}`).not.toMatch(/[一二三四五六七八九][万条筒]/)
   })
 })

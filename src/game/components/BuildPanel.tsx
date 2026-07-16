@@ -1,7 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import {
   ArrowCounterClockwiseIcon,
-  HandGrabbingIcon,
   PauseIcon,
   PlayIcon
 } from '@phosphor-icons/react'
@@ -41,6 +40,12 @@ interface BuildPanelProps {
   onReset?: () => void
 }
 
+interface GamePhaseHintProps {
+  placedCount: number
+  gameStatus: GameStatus
+  canGambleForHonor: boolean
+}
+
 function getPhaseCopy(
   gameStatus: GameStatus,
   placedCount: number,
@@ -51,41 +56,60 @@ function getPhaseCopy(
       return {
         eyebrow: `建造 ${placedCount}/${ECONOMY_CONFIG.towersPerRound}`,
         title: '拖动暗牌到地图',
-        detail: '可自由拖动任意牌；落地后立即翻开。'
+        detail: '拖牌到地图，落地即翻开'
       }
     case 'deciding':
       return {
-        eyebrow: '三张牌已落地',
+        eyebrow: '三选一',
         title: '选择 1 张激活',
-        detail: `其余 ${ECONOMY_CONFIG.towersPerRound - 1} 张原地成为牌墙。`
+        detail: `激活 1 张，其余 ${ECONOMY_CONFIG.towersPerRound - 1} 张变牌墙`
       }
     case 'resolving_hand':
       return canGambleForHonor
         ? {
-            eyebrow: '处理剩余牌',
+            eyebrow: '处理手牌',
             title: '保留手牌或赌功能牌',
-            detail: '三张花色已公开、点数保密：可留 1 张，或消耗三张按花色组成赌功能牌。'
+            detail: '点数保密：留 1 张或三张赌功能牌'
           }
         : {
-            eyebrow: '处理剩余牌',
+            eyebrow: '处理手牌',
             title: '保留 1 张手牌',
-            detail: '花色已公开、点数保密；保留 1 张，其余回池。'
+            detail: '看花色留 1 张，点数仍保密'
           }
     case 'ready':
       return {
-        eyebrow: '迷宫准备完成',
+        eyebrow: '备战完成',
         title: '开始下一波',
-        detail: '牌墙会持续占位，不会在波次结束时自动回池。'
+        detail: '可整备，或开始下一波'
       }
     case 'playing':
-      return { eyebrow: '战斗中', title: '暂停', detail: '激活牌正按花色与面子能力自动攻击。' }
+      return { eyebrow: '战斗中', title: '暂停', detail: '棋子正在自动攻击' }
     case 'paused':
-      return { eyebrow: '战斗已暂停', title: '继续', detail: '检查路线和牌位后继续战斗。' }
+      return { eyebrow: '已暂停', title: '继续', detail: '检查路线后继续' }
     case 'victory':
-      return { eyebrow: '全部波次完成', title: '再玩一局', detail: '新的摸牌顺序会带来不同迷宫。' }
+      return { eyebrow: '胜利', title: '再玩一局', detail: '全部波次完成' }
     default:
-      return { eyebrow: '矿坑失守', title: '重新开始', detail: '调整落牌位置和留牌策略再试一次。' }
+      return { eyebrow: '矿坑失守', title: '重新开始', detail: '调整落牌和留牌策略再来' }
   }
+}
+
+export function GamePhaseHint({
+  placedCount,
+  gameStatus,
+  canGambleForHonor
+}: GamePhaseHintProps) {
+  const copy = getPhaseCopy(gameStatus, placedCount, canGambleForHonor)
+
+  return (
+    <aside
+      className={`game-phase-hint game-phase-hint--${gameStatus}`}
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span>{copy.eyebrow}</span>
+      <strong>{copy.detail}</strong>
+    </aside>
+  )
 }
 
 export function FunctionTileStrip({
@@ -253,21 +277,11 @@ export function BuildPanel({
     if (gameStatus === 'game_over' || gameStatus === 'victory') {
       return <button type="button" className="action-deck__primary action-deck__primary--action" onClick={onReset} disabled={!onReset}><ArrowCounterClockwiseIcon weight="bold" />{copy.title}</button>
     }
-    if (gameStatus === 'building') return null
-    return (
-      <div className="action-deck__primary action-deck__primary--status" aria-live="polite">
-        <HandGrabbingIcon weight="fill" />
-        {copy.title}
-      </div>
-    )
+    return null
   }
 
   return (
     <section className={`build-panel action-deck action-deck--${gameStatus}`} aria-label="当前游戏阶段">
-      <div className="action-deck__phase">
-        <span>{copy.eyebrow}</span>
-        <strong>{copy.detail}</strong>
-      </div>
       {gameStatus !== 'resolving_hand' && renderPrimary()}
       {renderTiles()}
       {lastHonorGamble && gameStatus === 'ready' && (
@@ -287,7 +301,6 @@ export function BuildPanel({
           onSelect={onSelectFunctionTile}
         />
       )}
-      {gameStatus === 'resolving_hand' && renderPrimary()}
       <div className="action-deck__meta" aria-label="建造资源">
         <span>剩余建造 {wood} 次</span>
         <span>金币 {gold}</span>

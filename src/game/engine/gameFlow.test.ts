@@ -74,7 +74,7 @@ describe('build and wave flow', () => {
     expect(getStatusAfterWave(WAVES.length, WAVES.length)).toBe('victory')
   })
 
-  it('shows a completed-wave notice until the next wave starts', () => {
+  it('identifies the completed wave while the next round is being prepared', () => {
     expect(getCompletedWaveForNotice('building', 0, 12)).toBeNull()
     expect(getCompletedWaveForNotice('building', 1, 12)).toBe(1)
     expect(getCompletedWaveForNotice('deciding', 1, 12)).toBe(1)

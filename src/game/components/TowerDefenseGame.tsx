@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { useGameEngine } from '../engine/useGameEngine'
 import { GameCanvas } from './GameCanvas'
 import { GameUI } from './GameUI'
-import { BuildPanel } from './BuildPanel'
+import { BuildPanel, GamePhaseHint } from './BuildPanel'
 import { MahjongActivationDecision } from './MahjongActivationDecision'
 import { ATTACHMENT_FAILURE_MESSAGES } from './mahjongUiModel'
 import { MahjongSynthesisDialog } from './MahjongSynthesisDialog'
@@ -256,6 +256,12 @@ export const TowerDefenseGame: React.FC = () => {
       <div className="game-main">
         <div className="game-board">
           <GameCanvas onClick={handleCanvasClick} onPlacementPreviewEnd={clearPlacementPreview} />
+
+          <GamePhaseHint
+            placedCount={currentBatchTowers.length}
+            gameStatus={uiState.gameStatus}
+            canGambleForHonor={uiState.canGambleForHonor}
+          />
 
           <WaveCompletionNotice gameStatus={uiState.gameStatus} currentWave={uiState.wave} />
 
