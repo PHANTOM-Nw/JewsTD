@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
   MAHJONG_HONOR_LABELS,
-  MAHJONG_RED_ATTACHMENT_CONFIG
+  MAHJONG_WHITE_CATALYST_CONFIG
 } from '../config/mahjong'
 import { MahjongHonorDetail, MahjongHonorDetailView } from './MahjongHonorDetail'
 
@@ -37,99 +37,28 @@ function findElement(
   return match
 }
 
-const findConfirm = (view: ReactNode) => findElement(view, element => (
-  element.props.className === 'synthesis-dialog__confirm'
-))
-
 describe('MahjongHonorDetail', () => {
-  it('presents 中 as a confirmable attachment dialog with config-derived effects', () => {
-    const markup = renderToStaticMarkup(
-      <MahjongHonorDetail honor="red" canAttach onConfirm={vi.fn()} onClose={vi.fn()} />
-    )
+  it('shows 白 as a close-only catalyst dialog derived from the white config', () => {
+    const markup = renderToStaticMarkup(<MahjongHonorDetail onClose={vi.fn()} />)
 
     expect(markup).toContain('role="dialog"')
     expect(markup).toContain('aria-modal="true"')
     expect(markup).toContain('aria-labelledby="mahjong-honor-title"')
-    expect(markup).toContain(MAHJONG_HONOR_LABELS.red)
-    expect(markup).toContain(`×${MAHJONG_RED_ATTACHMENT_CONFIG.damageMultiplier}`)
-    expect(markup).toContain('确认选择')
-    expect(markup).toContain('>取消<')
-  })
-
-  it('confirms 中 with its honor and closes on cancel', () => {
-    const confirm = vi.fn()
-    const close = vi.fn()
-    const view = MahjongHonorDetailView({
-      honor: 'red',
-      canAttach: true,
-      onConfirm: confirm,
-      onClose: close
-    })
-
-    const confirmButton = findConfirm(view)
-    expect(confirmButton?.props.disabled).toBe(false)
-    confirmButton?.props.onClick?.()
-    expect(confirm).toHaveBeenCalledOnce()
-    expect(confirm).toHaveBeenCalledWith('red')
-
-    const cancelButton = findElement(view, element => element.props.children === '取消')
-    expect(cancelButton).not.toBeNull()
-    cancelButton?.props.onClick?.()
-    expect(close).toHaveBeenCalledOnce()
-  })
-
-  it('confirms 發 with its own honor', () => {
-    const confirm = vi.fn()
-    const view = MahjongHonorDetailView({
-      honor: 'green',
-      canAttach: true,
-      onConfirm: confirm,
-      onClose: vi.fn()
-    })
-
-    findConfirm(view)?.props.onClick?.()
-    expect(confirm).toHaveBeenCalledWith('green')
-  })
-
-  it('disables confirmation while attachment is not allowed', () => {
-    const markup = renderToStaticMarkup(
-      <MahjongHonorDetail honor="green" canAttach={false} onConfirm={vi.fn()} onClose={vi.fn()} />
-    )
-    expect(markup).toContain('确认选择')
-    expect(markup).toContain('disabled=""')
-
-    const view = MahjongHonorDetailView({
-      honor: 'green',
-      canAttach: false,
-      onConfirm: vi.fn(),
-      onClose: vi.fn()
-    })
-    expect(findConfirm(view)?.props.disabled).toBe(true)
-  })
-
-  it('shows 白 as a close-only catalyst dialog with no confirmation path', () => {
-    const confirm = vi.fn()
-    const close = vi.fn()
-    const markup = renderToStaticMarkup(
-      <MahjongHonorDetail honor="white" canAttach onConfirm={confirm} onClose={close} />
-    )
-
-    expect(markup).toContain('role="dialog"')
     expect(markup).toContain(MAHJONG_HONOR_LABELS.white)
+    expect(markup).toContain(`${MAHJONG_WHITE_CATALYST_CONFIG.maxPerSynthesis} 张`)
+    // 白没有附着流程，因此没有确认选择/确认附着按钮。
     expect(markup).not.toContain('确认选择')
+    expect(markup).not.toContain('确认附着')
     expect(markup).toContain('>关闭<')
+  })
 
-    const view = MahjongHonorDetailView({
-      honor: 'white',
-      canAttach: true,
-      onConfirm: confirm,
-      onClose: close
-    })
-    expect(findConfirm(view)).toBeNull()
+  it('closes when the sole action is pressed', () => {
+    const close = vi.fn()
+    const view = MahjongHonorDetailView({ onClose: close })
 
     const closeButton = findElement(view, element => element.props.children === '关闭')
+    expect(closeButton).not.toBeNull()
     closeButton?.props.onClick?.()
     expect(close).toHaveBeenCalledOnce()
-    expect(confirm).not.toHaveBeenCalled()
   })
 })

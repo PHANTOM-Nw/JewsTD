@@ -1,14 +1,10 @@
 import type { RefObject } from 'react'
-import { CheckIcon, XIcon } from '@phosphor-icons/react'
-import type { MahjongAttachment, MahjongHonor } from '../types/game'
-import { getMahjongHonorDescription } from './mahjongUiModel'
+import { XIcon } from '@phosphor-icons/react'
+import { getMahjongWhiteCatalystDescription } from './mahjongUiModel'
 import { MahjongTile } from './MahjongTile'
 import { useDialogFocus } from './useDialogFocus'
 
 interface MahjongHonorDetailProps {
-  honor: MahjongHonor
-  canAttach: boolean
-  onConfirm: (attachment: MahjongAttachment) => void
   onClose: () => void
 }
 
@@ -18,23 +14,16 @@ interface MahjongHonorDetailViewProps extends MahjongHonorDetailProps {
 }
 
 /**
- * Hook-free presentation so the confirm/cancel wiring stays unit-testable through
- * findElement + props.onClick in the default Node test environment.
+ * White is the only honor without an attachment flow, so selecting it opens this
+ * read-only catalyst detail. Kept as a hook-free View wrapped by a focus-managing
+ * component so it stays unit-testable in the default Node test environment.
  */
 export function MahjongHonorDetailView({
-  honor,
-  canAttach,
-  onConfirm,
   onClose,
   dialogRef,
   closeButtonRef
 }: MahjongHonorDetailViewProps) {
-  const description = getMahjongHonorDescription(honor)
-
-  const confirm = () => {
-    if (honor === 'white') return
-    onConfirm(honor)
-  }
+  const description = getMahjongWhiteCatalystDescription()
 
   return (
     <div className="synthesis-dialog-backdrop" role="presentation">
@@ -59,7 +48,7 @@ export function MahjongHonorDetailView({
         </header>
 
         <div className="mahjong-honor-detail__body">
-          <MahjongTile honor={honor} />
+          <MahjongTile honor="white" />
           <div>
             <strong>{description.title}</strong>
             <ul className="mahjong-honor-detail__effects">
@@ -71,21 +60,7 @@ export function MahjongHonorDetailView({
         <p className="mahjong-honor-detail__usage">{description.usageNote}</p>
 
         <div className="mahjong-dialog__actions">
-          {description.kind === 'attachment' ? (
-            <>
-              <button type="button" onClick={onClose}>取消</button>
-              <button
-                type="button"
-                className="synthesis-dialog__confirm"
-                disabled={!canAttach}
-                onClick={confirm}
-              >
-                <CheckIcon weight="bold" />确认选择
-              </button>
-            </>
-          ) : (
-            <button type="button" onClick={onClose}>关闭</button>
-          )}
+          <button type="button" onClick={onClose}>关闭</button>
         </div>
       </section>
     </div>

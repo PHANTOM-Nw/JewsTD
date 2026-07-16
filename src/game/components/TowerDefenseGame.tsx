@@ -5,6 +5,7 @@ import { GameUI } from './GameUI'
 import { BuildPanel } from './BuildPanel'
 import { MahjongActivationDecision } from './MahjongActivationDecision'
 import {
+  ATTACHMENT_FAILURE_MESSAGES,
   getMahjongPairRouteHint,
   getMahjongTowerActionLabel,
   getMahjongTowerComparisonLabel
@@ -13,6 +14,7 @@ import { MahjongTile } from './MahjongTile'
 import { MahjongSynthesisDialog } from './MahjongSynthesisDialog'
 import { MahjongWallDetail } from './MahjongWallDetail'
 import { MahjongHonorDetail } from './MahjongHonorDetail'
+import { MahjongHonorAttachmentConfirm } from './MahjongHonorAttachmentConfirm'
 import { WaveCompletionNotice } from './WaveCompletionNotice'
 import type { GridCell, MahjongAttachment, MahjongHonor, Tower } from '../types/game'
 import {
@@ -29,13 +31,10 @@ interface ActiveTileDrag {
   pointerId: number
 }
 
-const ATTACHMENT_FAILURE_MESSAGES = {
-  invalid_phase: '中、發只能在建造或备战阶段附着。',
-  tower_not_found: '没有找到这座激活棋子。',
-  honor_unavailable: '功能牌区没有这张牌。',
-  already_attached: '这座棋子已经携带相同功能牌。',
-  attachment_capacity: '当前形态没有更多中发附着容量。'
-} as const
+interface PendingAttachmentTarget {
+  tower: Tower
+  attachment: MahjongAttachment
+}
 
 export const TowerDefenseGame: React.FC = () => {
   const {
@@ -63,6 +62,7 @@ export const TowerDefenseGame: React.FC = () => {
   const [selectedSynthesisAnchor, setSelectedSynthesisAnchor] = useState<Tower | null>(null)
   const [selectedWall, setSelectedWall] = useState<GridCell | null>(null)
   const [pendingAttachment, setPendingAttachment] = useState<MahjongAttachment | null>(null)
+  const [pendingAttachmentTarget, setPendingAttachmentTarget] = useState<PendingAttachmentTarget | null>(null)
   const [honorDetail, setHonorDetail] = useState<MahjongHonor | null>(null)
   const [mahjongActionMessage, setMahjongActionMessage] = useState('')
 
@@ -161,6 +161,7 @@ export const TowerDefenseGame: React.FC = () => {
       setSelectedSynthesisAnchor(null)
       setSelectedWall(null)
       setHonorDetail(null)
+      setPendingAttachmentTarget(null)
     }
     if (!preparation) setPendingAttachment(null)
   }, [uiState.gameStatus])
@@ -172,22 +173,29 @@ export const TowerDefenseGame: React.FC = () => {
 
   const selectActiveTower = useCallback((tower: Tower) => {
     if (pendingAttachment) {
-      const result = attachMahjongHonor(tower.id, pendingAttachment)
-      if (result.ok) {
-        setMahjongActionMessage(
-          `${MAHJONG_HONOR_LABELS[pendingAttachment]}已附着到${tower.mahjongTile ? getMahjongTileName(tower.mahjongTile) : '棋子'}。`
-        )
-        setPendingAttachment(null)
-      } else {
-        setMahjongActionMessage(ATTACHMENT_FAILURE_MESSAGES[result.reason])
-      }
+      setPendingAttachmentTarget({ tower, attachment: pendingAttachment })
       return
     }
 
     setSelectedWall(null)
     setSelectedSynthesisAnchor(tower)
     setMahjongActionMessage('')
-  }, [attachMahjongHonor, pendingAttachment])
+  }, [pendingAttachment])
+
+  const confirmPendingAttachment = useCallback(() => {
+    if (!pendingAttachmentTarget) return
+    const { tower, attachment } = pendingAttachmentTarget
+    const result = attachMahjongHonor(tower.id, attachment)
+    if (result.ok) {
+      setMahjongActionMessage(
+        `${MAHJONG_HONOR_LABELS[attachment]}已附着到${tower.mahjongTile ? getMahjongTileName(tower.mahjongTile) : '棋子'}。`
+      )
+      setPendingAttachment(null)
+    } else {
+      setMahjongActionMessage(ATTACHMENT_FAILURE_MESSAGES[result.reason])
+    }
+    setPendingAttachmentTarget(null)
+  }, [attachMahjongHonor, pendingAttachmentTarget])
 
   const handleCanvasClick = useCallback((gridPos: { row: number; col: number }) => {
     const { grid, towers } = gameStateRef.current
@@ -238,6 +246,7 @@ export const TowerDefenseGame: React.FC = () => {
     setSelectedSynthesisAnchor(null)
     setSelectedWall(null)
     setPendingAttachment(null)
+    setPendingAttachmentTarget(null)
     setHonorDetail(null)
     setMahjongActionMessage('')
   }
@@ -349,7 +358,14 @@ export const TowerDefenseGame: React.FC = () => {
           onSelectFunctionTile={honor => {
             setSelectedSynthesisAnchor(null)
             setSelectedWall(null)
-            setHonorDetail(honor)
+            if (honor === 'white') {
+              setHonorDetail('white')
+              return
+            }
+            setPendingAttachment(honor)
+            setMahjongActionMessage(
+              `已选择${MAHJONG_HONOR_LABELS[honor]}，请在地图或键盘列表中选择激活棋子。`
+            )
           }}
           onStartWave={startWave}
           onPause={pause}
@@ -381,17 +397,15 @@ export const TowerDefenseGame: React.FC = () => {
       )}
 
       {honorDetail && (
-        <MahjongHonorDetail
-          honor={honorDetail}
-          canAttach={uiState.gameStatus === 'building' || uiState.gameStatus === 'ready'}
-          onConfirm={attachment => {
-            setPendingAttachment(attachment)
-            setMahjongActionMessage(
-              `已选择${MAHJONG_HONOR_LABELS[attachment]}，请在地图或键盘列表中选择激活棋子。`
-            )
-            setHonorDetail(null)
-          }}
-          onClose={() => setHonorDetail(null)}
+        <MahjongHonorDetail onClose={() => setHonorDetail(null)} />
+      )}
+
+      {pendingAttachmentTarget && (
+        <MahjongHonorAttachmentConfirm
+          tower={pendingAttachmentTarget.tower}
+          attachment={pendingAttachmentTarget.attachment}
+          onConfirm={confirmPendingAttachment}
+          onClose={() => setPendingAttachmentTarget(null)}
         />
       )}
 
