@@ -3,10 +3,21 @@ import { useGameEngine } from '../engine/useGameEngine'
 import { GameCanvas } from './GameCanvas'
 import { GameUI } from './GameUI'
 import { BuildPanel } from './BuildPanel'
+import { MahjongActivationDecision } from './MahjongActivationDecision'
+import {
+  getMahjongPairRouteHint,
+  getMahjongTowerActionLabel,
+  getMahjongTowerComparisonLabel
+} from './mahjongUiModel'
 import { MahjongTile } from './MahjongTile'
+import { MahjongSynthesisDialog } from './MahjongSynthesisDialog'
+import { MahjongWallDetail } from './MahjongWallDetail'
 import { WaveCompletionNotice } from './WaveCompletionNotice'
-import type { Tower } from '../types/game'
-import { getMahjongTileName } from '../config/mahjong'
+import type { GridCell, MahjongAttachment, Tower } from '../types/game'
+import {
+  getMahjongTileName,
+  MAHJONG_HONOR_LABELS
+} from '../config/mahjong'
 import { MAP_CONFIG } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
 import { screenPointToGrid } from './canvasPointer'
@@ -16,6 +27,14 @@ interface ActiveTileDrag {
   tileId: string
   pointerId: number
 }
+
+const ATTACHMENT_FAILURE_MESSAGES = {
+  invalid_phase: '中、發只能在建造或备战阶段附着。',
+  tower_not_found: '没有找到这座激活棋子。',
+  honor_unavailable: '功能牌区没有这张牌。',
+  already_attached: '这座棋子已经携带相同功能牌。',
+  attachment_capacity: '当前形态没有更多中发附着容量。'
+} as const
 
 export const TowerDefenseGame: React.FC = () => {
   const {
@@ -29,6 +48,9 @@ export const TowerDefenseGame: React.FC = () => {
     revealMahjongHandSuits,
     keepMahjongHand,
     gambleForMahjongHonor,
+    synthesizeMahjong,
+    attachMahjongHonor,
+    removeMahjongWall,
     startWave,
     pause,
     resume,
@@ -38,6 +60,21 @@ export const TowerDefenseGame: React.FC = () => {
   const [currentBatchTowers, setCurrentBatchTowers] = useState<string[]>([])
   const [selectedTowerForDecision, setSelectedTowerForDecision] = useState<Tower | null>(null)
   const [activeTileDrag, setActiveTileDrag] = useState<ActiveTileDrag | null>(null)
+  const [selectedSynthesisAnchor, setSelectedSynthesisAnchor] = useState<Tower | null>(null)
+  const [selectedWall, setSelectedWall] = useState<GridCell | null>(null)
+  const [pendingAttachment, setPendingAttachment] = useState<MahjongAttachment | null>(null)
+  const [mahjongActionMessage, setMahjongActionMessage] = useState('')
+
+  const activeTowers = gameStateRef.current.towers.filter(tower => (
+    gameStateRef.current.storedTowerIds.includes(tower.id)
+  ))
+  const mahjongWalls = gameStateRef.current.grid.flat().filter(cell => (
+    cell.type === 'obstacle'
+    && (cell.mahjongWallKind === 'tile' || cell.mahjongWallKind === 'pure')
+  ))
+  const decisionTowers = currentBatchTowers
+    .map(towerId => gameStateRef.current.towers.find(tower => tower.id === towerId))
+    .filter((tower): tower is Tower => Boolean(tower?.mahjongTile))
 
   const clientPointToGrid = useCallback((clientX: number, clientY: number) => {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null
@@ -117,10 +154,38 @@ export const TowerDefenseGame: React.FC = () => {
     selectRoundTile
   ])
 
+  useEffect(() => {
+    const preparation = uiState.gameStatus === 'building' || uiState.gameStatus === 'ready'
+    if (!preparation) {
+      setSelectedSynthesisAnchor(null)
+      setSelectedWall(null)
+    }
+    if (!preparation) setPendingAttachment(null)
+  }, [uiState.gameStatus])
+
   const beginTileDrag = (tileId: string, pointerId: number) => {
     if (uiState.gameStatus !== 'building' || !selectRoundTile(tileId)) return
     setActiveTileDrag({ tileId, pointerId })
   }
+
+  const selectActiveTower = useCallback((tower: Tower) => {
+    if (pendingAttachment) {
+      const result = attachMahjongHonor(tower.id, pendingAttachment)
+      if (result.ok) {
+        setMahjongActionMessage(
+          `${MAHJONG_HONOR_LABELS[pendingAttachment]}已附着到${tower.mahjongTile ? getMahjongTileName(tower.mahjongTile) : '棋子'}。`
+        )
+        setPendingAttachment(null)
+      } else {
+        setMahjongActionMessage(ATTACHMENT_FAILURE_MESSAGES[result.reason])
+      }
+      return
+    }
+
+    setSelectedWall(null)
+    setSelectedSynthesisAnchor(tower)
+    setMahjongActionMessage('')
+  }, [attachMahjongHonor, pendingAttachment])
 
   const handleCanvasClick = useCallback((gridPos: { row: number; col: number }) => {
     const { grid, towers } = gameStateRef.current
@@ -135,11 +200,26 @@ export const TowerDefenseGame: React.FC = () => {
         && gameStateRef.current.currentBatchTowerIds.includes(existingTower.id)
       ) {
         setSelectedTowerForDecision(existingTower)
+      } else if (
+        existingTower
+        && (uiState.gameStatus === 'building' || uiState.gameStatus === 'ready')
+        && gameStateRef.current.storedTowerIds.includes(existingTower.id)
+      ) {
+        selectActiveTower(existingTower)
       }
       return
     }
 
-  }, [gameStateRef, uiState.gameStatus])
+    if (
+      cell.type === 'obstacle'
+      && (cell.mahjongWallKind === 'tile' || cell.mahjongWallKind === 'pure')
+      && (uiState.gameStatus === 'building' || uiState.gameStatus === 'ready')
+    ) {
+      setSelectedSynthesisAnchor(null)
+      setSelectedWall(cell)
+      setMahjongActionMessage('')
+    }
+  }, [gameStateRef, selectActiveTower, uiState.gameStatus])
 
   const handleFinalizeTowers = (keepTowerId: string) => {
     if (finalizeTowers(keepTowerId)) {
@@ -153,6 +233,10 @@ export const TowerDefenseGame: React.FC = () => {
     setCurrentBatchTowers([])
     setSelectedTowerForDecision(null)
     setActiveTileDrag(null)
+    setSelectedSynthesisAnchor(null)
+    setSelectedWall(null)
+    setPendingAttachment(null)
+    setMahjongActionMessage('')
   }
 
   return (
@@ -167,49 +251,82 @@ export const TowerDefenseGame: React.FC = () => {
         <div className="game-board">
           <GameCanvas onClick={handleCanvasClick} onPlacementPreviewEnd={clearPlacementPreview} />
 
-          {uiState.gameStatus === 'deciding' && selectedTowerForDecision?.mahjongTile && (
-            <section className="tower-decision" role="dialog" aria-modal="true" aria-labelledby="tower-decision-title">
-              <span className="tower-decision__eyebrow">三选一</span>
-              <h2 id="tower-decision-title">选择要激活的牌</h2>
-
-              <div className="tower-decision__choices">
-                {currentBatchTowers.map(towerId => {
-                  const tower = gameStateRef.current.towers.find(candidate => candidate.id === towerId)
-                  if (!tower?.mahjongTile) return null
-                  const isSelected = tower.id === selectedTowerForDecision.id
-                  const name = getMahjongTileName(tower.mahjongTile)
-                  return (
-                    <button
-                      key={tower.id}
-                      type="button"
-                      className={`tower-choice${isSelected ? ' tower-choice--selected' : ''}`}
-                      onClick={() => setSelectedTowerForDecision(tower)}
-                      aria-pressed={isSelected}
-                      aria-label={`选择${name}作为激活牌`}
-                    >
-                      <MahjongTile tile={tower.mahjongTile} compact />
-                      <span>{name}</span>
-                    </button>
-                  )
-                })}
-              </div>
-
-              <div className="tower-decision__detail">
-                <MahjongTile tile={selectedTowerForDecision.mahjongTile} />
-                <div>
-                  <strong>{getMahjongTileName(selectedTowerForDecision.mahjongTile)}</strong>
-                  <span>激活后保留在场上</span>
-                  <small>基础伤害 {selectedTowerForDecision.damage} · 范围 {selectedTowerForDecision.range} · 攻速 {selectedTowerForDecision.attackSpeed}ms</small>
-                </div>
-              </div>
-
-              <button type="button" className="tower-decision__confirm" onClick={() => handleFinalizeTowers(selectedTowerForDecision.id)}>
-                激活此牌
-              </button>
-              <p className="tower-decision__hint">其余 2 张保留完整牌面并原地成为牌墙，继续改变敌人路线。</p>
-            </section>
+          {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (
+            <MahjongActivationDecision
+              towers={decisionTowers}
+              selectedTowerId={selectedTowerForDecision.id}
+              onSelect={setSelectedTowerForDecision}
+              onConfirm={handleFinalizeTowers}
+            />
           )}
         </div>
+
+        {(uiState.gameStatus === 'building' || uiState.gameStatus === 'ready') && (
+          <details className="mahjong-board-access">
+            <summary>地图棋子与墙体操作（键盘入口）</summary>
+            <p className="mahjong-board-access__hint">
+              {pendingAttachment
+                ? `已选择${MAHJONG_HONOR_LABELS[pendingAttachment]}，请选择一座激活棋子。`
+                : '选择激活棋子打开合成工作台；选择墙体查看拆除详情。'}
+            </p>
+            <div className="mahjong-board-access__group" role="group" aria-label="激活棋子">
+              {activeTowers.length === 0 ? <span>暂无激活棋子</span> : activeTowers.map(tower => {
+                if (!tower.mahjongTile) return null
+                const name = getMahjongTileName(tower.mahjongTile)
+                const comparison = getMahjongTowerComparisonLabel(tower)
+                const pairHint = tower.mahjongState
+                  ? getMahjongPairRouteHint(tower.mahjongState)
+                  : null
+                return (
+                  <button
+                    key={tower.id}
+                    type="button"
+                    onClick={() => selectActiveTower(tower)}
+                    aria-label={getMahjongTowerActionLabel(tower, pendingAttachment)}
+                  >
+                    <MahjongTile tile={tower.mahjongTile} compact />
+                    <span>{name}</span>
+                    <small>{comparison}</small>
+                    {pairHint && <small className="mahjong-board-access__pair-hint">{pairHint}</small>}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mahjong-board-access__group" role="group" aria-label="牌墙和纯墙体">
+              {mahjongWalls.length === 0 ? <span>暂无墙体</span> : mahjongWalls.map(wall => {
+                const key = `${wall.row}:${wall.col}`
+                const name = wall.mahjongWallKind === 'tile' && wall.mahjongTile
+                  ? `${getMahjongTileName(wall.mahjongTile)}牌墙`
+                  : '纯墙体'
+                const cost = wall.mahjongWallKind === 'tile'
+                  ? ECONOMY_CONFIG.mahjongTileWallRemovalGoldCost
+                  : ECONOMY_CONFIG.mahjongPureWallRemovalGoldCost
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSynthesisAnchor(null)
+                      setSelectedWall(wall)
+                      setMahjongActionMessage('')
+                    }}
+                    aria-label={`查看${name}，${wall.row + 1}行${wall.col + 1}列，拆除${cost}金币`}
+                  >
+                    {wall.mahjongTile
+                      ? <MahjongTile tile={wall.mahjongTile} compact />
+                      : <b aria-hidden="true">墙</b>}
+                    <span>{name}</span>
+                    <small>{wall.row + 1}行{wall.col + 1}列 · {cost}金币</small>
+                  </button>
+                )
+              })}
+            </div>
+          </details>
+        )}
+
+        <p className="mahjong-action-message mahjong-action-message--global" aria-live="polite">
+          {mahjongActionMessage}
+        </p>
 
         <BuildPanel
           wood={uiState.wood}
@@ -226,12 +343,42 @@ export const TowerDefenseGame: React.FC = () => {
           onRevealHandSuits={revealMahjongHandSuits}
           onKeepHand={keepMahjongHand}
           onGambleForHonor={gambleForMahjongHonor}
+          onSelectFunctionTile={attachment => {
+            setPendingAttachment(attachment)
+            setSelectedSynthesisAnchor(null)
+            setSelectedWall(null)
+            setMahjongActionMessage(
+              `已选择${MAHJONG_HONOR_LABELS[attachment]}，请在地图或键盘列表中选择激活棋子。`
+            )
+          }}
           onStartWave={startWave}
           onPause={pause}
           onResume={resume}
           onReset={handleResetGame}
         />
       </div>
+
+      {selectedSynthesisAnchor && (
+        <MahjongSynthesisDialog
+          gameStatus={uiState.gameStatus}
+          anchorTower={selectedSynthesisAnchor}
+          fieldTowers={activeTowers}
+          walls={mahjongWalls}
+          availableWhiteCount={uiState.functionTiles.filter(tile => tile === 'white').length}
+          onConfirm={synthesizeMahjong}
+          onClose={() => setSelectedSynthesisAnchor(null)}
+        />
+      )}
+
+      {selectedWall && (
+        <MahjongWallDetail
+          wall={selectedWall}
+          gold={uiState.gold}
+          gameStatus={uiState.gameStatus}
+          onRemove={removeMahjongWall}
+          onClose={() => setSelectedWall(null)}
+        />
+      )}
 
       {uiState.gameStatus === 'game_over' && (
         <div className="game-result game-result--over">

@@ -48,4 +48,17 @@ describe('damage number presentation', () => {
     expect(poison.fill).not.toBe(physical.fill)
     expect(poison.fontSize).toBeLessThan(physical.fontSize)
   })
+
+  it('uses a distinct ember style for burn ticks', () => {
+    const burn = getDamageNumberPresentation(createDamageNumber({
+      damageType: 'burn'
+    }))
+    const poison = getDamageNumberPresentation(createDamageNumber({
+      damageType: 'poison'
+    }))
+
+    expect(burn.fill).not.toBe(poison.fill)
+    expect(burn.shadow).toContain('255, 91, 37')
+    expect(burn.fontSize).toBe(poison.fontSize)
+  })
 })

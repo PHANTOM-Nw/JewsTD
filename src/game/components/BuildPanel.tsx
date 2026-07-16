@@ -14,6 +14,7 @@ import { WAVES } from '../config/waves'
 import type {
   GameStatus,
   MahjongHonor,
+  MahjongAttachment,
   MahjongRoundTileView,
   MahjongSuit
 } from '../types/game'
@@ -34,6 +35,7 @@ interface BuildPanelProps {
   onRevealHandSuits?: () => void
   onKeepHand?: (tileId: string) => void
   onGambleForHonor?: () => void
+  onSelectFunctionTile?: (attachment: MahjongAttachment) => void
   onStartWave?: () => void
   onPause?: () => void
   onResume?: () => void
@@ -77,7 +79,7 @@ function getPhaseCopy(
         detail: '牌墙会持续占位，不会在波次结束时自动回池。'
       }
     case 'playing':
-      return { eyebrow: '战斗中', title: '暂停', detail: '激活牌正在使用统一基础参数自动攻击。' }
+      return { eyebrow: '战斗中', title: '暂停', detail: '激活牌正按花色与面子能力自动攻击。' }
     case 'paused':
       return { eyebrow: '战斗已暂停', title: '继续', detail: '检查路线和牌位后继续战斗。' }
     case 'victory':
@@ -87,18 +89,47 @@ function getPhaseCopy(
   }
 }
 
-function FunctionTileStrip({ tiles }: { tiles: MahjongHonor[] }) {
-  if (tiles.length === 0) return null
+export function FunctionTileStrip({
+  tiles,
+  canAttach,
+  onSelect
+}: {
+  tiles: MahjongHonor[]
+  canAttach: boolean
+  onSelect?: (attachment: MahjongAttachment) => void
+}) {
   return (
     <div className="mahjong-functions" aria-label="功能牌区">
       <span>功能牌</span>
-      <div>
-        {tiles.map((honor, index) => (
-          <span key={`${honor}-${index}`} title={MAHJONG_HONOR_LABELS[honor]}>
-            <MahjongTile honor={honor} compact />
-          </span>
-        ))}
-      </div>
+      {tiles.length === 0 ? (
+        <small>暂无功能牌</small>
+      ) : (
+        <div>
+          {tiles.map((honor, index) => honor === 'white' ? (
+            <span
+              key={`${honor}-${index}`}
+              className="mahjong-function-tile mahjong-function-tile--white"
+              title="白只在吃或碰时作为万能材料"
+              aria-label="白，只能在吃或碰的合成工作台中作为材料"
+            >
+              <MahjongTile honor={honor} compact />
+              <small>合成材料</small>
+            </span>
+          ) : (
+            <button
+              key={`${honor}-${index}`}
+              type="button"
+              className={`mahjong-function-tile mahjong-function-tile--${honor}`}
+              disabled={!canAttach || !onSelect}
+              onClick={() => onSelect?.(honor)}
+              aria-label={`选择${MAHJONG_HONOR_LABELS[honor]}，然后选择一座激活棋子附着`}
+            >
+              <MahjongTile honor={honor} compact />
+              <small>选择目标</small>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -118,6 +149,7 @@ export function BuildPanel({
   onRevealHandSuits,
   onKeepHand,
   onGambleForHonor,
+  onSelectFunctionTile,
   onStartWave,
   onPause,
   onResume,
@@ -262,8 +294,12 @@ export function BuildPanel({
           <span>手牌：{MAHJONG_SUIT_LABELS[heldTileSuit]}（点数未知）</span>
         </div>
       )}
-      {(gameStatus === 'ready' || gameStatus === 'playing' || gameStatus === 'paused') && (
-        <FunctionTileStrip tiles={functionTiles} />
+      {(gameStatus === 'building' || gameStatus === 'ready') && (
+        <FunctionTileStrip
+          tiles={functionTiles}
+          canAttach={gameStatus === 'building' || gameStatus === 'ready'}
+          onSelect={onSelectFunctionTile}
+        />
       )}
       {renderPrimary()}
       <div className="action-deck__meta" aria-label="建造资源">

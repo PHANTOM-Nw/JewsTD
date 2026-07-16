@@ -3,11 +3,12 @@ import type { ReactElement, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { MahjongRoundTileView } from '../types/game'
-import { BuildPanel } from './BuildPanel'
+import { BuildPanel, FunctionTileStrip } from './BuildPanel'
 
 type ElementProps = {
   children?: ReactNode
   className?: string
+  disabled?: boolean
   'aria-label'?: string
   onClick?: () => void
 }
@@ -175,5 +176,73 @@ describe('BuildPanel hand resolution choice', () => {
 
     expect(keepHand).toHaveBeenCalledOnce()
     expect(keepHand).toHaveBeenCalledWith('bamboo-5-1')
+  })
+})
+
+describe('BuildPanel function tile actions', () => {
+  it('offers accessible red and green target actions while reserving white for synthesis', () => {
+    const selectFunctionTile = vi.fn()
+    const panel = BuildPanel({
+      wood: 3,
+      gold: 50,
+      placedCount: 0,
+      gameStatus: 'building',
+      roundTiles: [],
+      heldTileSuit: null,
+      functionTiles: ['red', 'green', 'white'],
+      canGambleForHonor: false,
+      lastHonorGamble: null,
+      onSelectFunctionTile: selectFunctionTile
+    })
+    const markup = renderToStaticMarkup(panel)
+
+    expect(markup).toContain('功能牌区')
+    expect(markup).toContain('选择中，然后选择一座激活棋子附着')
+    expect(markup).toContain('选择發，然后选择一座激活棋子附着')
+    expect(markup).toContain('白，只能在吃或碰的合成工作台中作为材料')
+
+    const strip = FunctionTileStrip({
+      tiles: ['red', 'green', 'white'],
+      canAttach: true,
+      onSelect: selectFunctionTile
+    })
+    const selectRed = findElement(strip, element => (
+      element.props['aria-label'] === '选择中，然后选择一座激活棋子附着'
+    ))
+    selectRed?.props.onClick?.()
+
+    expect(selectFunctionTile).toHaveBeenCalledOnce()
+    expect(selectFunctionTile).toHaveBeenCalledWith('red')
+  })
+
+  it('keeps target actions enabled in ready before the wave starts', () => {
+    const markup = renderToStaticMarkup(
+      <BuildPanel
+        wood={0}
+        gold={50}
+        placedCount={3}
+        gameStatus="ready"
+        roundTiles={[]}
+        heldTileSuit={null}
+        functionTiles={['red', 'white']}
+        canGambleForHonor={false}
+        lastHonorGamble={null}
+        onSelectFunctionTile={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('功能牌区')
+    expect(markup).toContain('选择中，然后选择一座激活棋子附着')
+    expect(markup).toContain('白，只能在吃或碰的合成工作台中作为材料')
+
+    const strip = FunctionTileStrip({
+      tiles: ['red', 'white'],
+      canAttach: true,
+      onSelect: vi.fn()
+    })
+    const selectRed = findElement(strip, element => (
+      element.props['aria-label'] === '选择中，然后选择一座激活棋子附着'
+    ))
+    expect(selectRed?.props.disabled).toBe(false)
   })
 })

@@ -7,9 +7,11 @@ import type {
   Bullet,
   GridCell,
   GemType,
+  MahjongAttachment,
   MahjongHonor,
   MahjongNumberTile,
   MahjongRoundTile,
+  MahjongPresentationEvent,
   DamageNumber,
   DamageNumberType,
   PlacementPreview,
@@ -20,16 +22,16 @@ import { WAVES } from '../config/waves'
 import { initializeGrid, gridToPixel } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
 import {
-  MAHJONG_BASE_TOWER_STATS,
+  MAHJONG_SUIT_COMBAT_CONFIG,
   beginMahjongRound,
   canGambleForMahjongHonor,
+  createMahjongRandomStats,
   createMahjongTilePool,
   resolveMahjongHonorGamble,
   toMahjongRoundTileViews
 } from '../config/mahjong'
 import { soundManager, type SoundType } from '../services/audio'
 import {
-  canFinalizeTowerBatch,
   canStartConfiguredWave,
   getStateAfterMineDamageBatch,
   getStatusAfterPlacement,
@@ -64,6 +66,38 @@ import type {
   EnemyMovementIntent,
   ScheduledEnemySpawn
 } from './enemyMovement'
+import {
+  calculateMahjongFormationStats,
+  createSingleMahjongTowerState
+} from './mahjongStats'
+import {
+  applyAttachMahjongHonorAction,
+  applyFinalizeMahjongBatchAction,
+  applyRemoveMahjongWallAction,
+  applySynthesizeMahjongAction
+} from './mahjongEngineActions'
+import type {
+  AttachMahjongHonorActionResult,
+  MahjongEngineActionState,
+  RemoveMahjongWallActionResult,
+  SynthesizeMahjongActionResult,
+  SynthesizeMahjongRequest
+} from './mahjongEngineActions'
+import {
+  createAttackPlan,
+  createMahjongAttackProfile,
+  EMPTY_MAHJONG_TARGET_EFFECTS,
+  resolveHitEffects
+} from './mahjongAttack'
+import type {
+  BambooFocusState,
+  MahjongAttackHitPlan,
+  MahjongTargetEffectState
+} from './mahjongAttack'
+import {
+  advanceMahjongRuntimeEffects,
+  hasMahjongRuntimeEffects
+} from './mahjongRuntimeEffects'
 
 interface EngineUiState extends UIState {
   selectedGem: GemType | null
@@ -85,7 +119,7 @@ interface EngineState {
   damageNumbers: DamageNumber[]
   damageNumberSequence: number
   grid: GridCell[][]
-  storedTowers: Tower[]
+  storedTowerIds: string[]
   currentPath: { row: number; col: number }[] | null
   placementPreview: PlacementPreview | null
   waveInProgress: boolean
@@ -97,6 +131,57 @@ interface EngineState {
   currentHealthMultiplier: number
   obstacleOrder: GridPosition[]
   mahjong: MahjongRuntimeState
+  mahjongBulletHits: Map<string, MahjongAttackHitPlan>
+  mahjongTargetEffects: Map<string, MahjongTargetEffectRuntime>
+  mahjongBambooFocus: Map<string, BambooFocusState>
+  mahjongPresentationEvents: MahjongPresentationEvent[]
+  mahjongAttackSequence: number
+}
+
+interface MahjongTargetEffectRuntime {
+  effects: MahjongTargetEffectState
+  pendingPoisonDamage: number
+  pendingBurnDamage: number
+  displayElapsedMs: number
+}
+
+export type SynthesizeMahjongResult =
+  | { ok: true; towerId: string }
+  | { ok: false; reason: Extract<SynthesizeMahjongActionResult, { ok: false }>['reason'] }
+
+export type AttachMahjongHonorResult =
+  | { ok: true }
+  | { ok: false; reason: Extract<AttachMahjongHonorActionResult, { ok: false }>['reason'] }
+
+export type RemoveMahjongWallResult =
+  | { ok: true; returnedTileId: string | null }
+  | { ok: false; reason: Extract<RemoveMahjongWallActionResult, { ok: false }>['reason'] }
+
+function toMahjongEngineActionState(
+  state: EngineState,
+  gold: number
+): MahjongEngineActionState {
+  return {
+    towers: state.towers,
+    storedTowerIds: state.storedTowerIds,
+    grid: state.grid,
+    obstacleOrder: state.obstacleOrder,
+    functionTiles: state.mahjong.functionTiles,
+    gold,
+    pool: state.mahjong.pool
+  }
+}
+
+function commitMahjongEngineActionState(
+  state: EngineState,
+  actionState: MahjongEngineActionState
+) {
+  state.towers = actionState.towers
+  state.storedTowerIds = actionState.storedTowerIds
+  state.grid = actionState.grid
+  state.obstacleOrder = actionState.obstacleOrder
+  state.mahjong.functionTiles = actionState.functionTiles
+  state.mahjong.pool = actionState.pool
 }
 
 function createInitialMahjongState(): MahjongRuntimeState {
@@ -196,7 +281,7 @@ export function useGameEngine() {
       damageNumbers: [],
       damageNumberSequence: 0,
       grid,
-      storedTowers: [],
+      storedTowerIds: [],
       currentPath: calculatePath(grid),
       placementPreview: null,
       waveInProgress: false,
@@ -207,7 +292,12 @@ export function useGameEngine() {
       currentBatchTowerIds: [],
       currentHealthMultiplier: 1,
       obstacleOrder: [],
-      mahjong: initialMahjongStateRef.current
+      mahjong: initialMahjongStateRef.current,
+      mahjongBulletHits: new Map(),
+      mahjongTargetEffects: new Map(),
+      mahjongBambooFocus: new Map(),
+      mahjongPresentationEvents: [],
+      mahjongAttackSequence: 0
     }
   }
 
@@ -315,21 +405,27 @@ export function useGameEngine() {
       return null
     }
 
-    // 数牌战斗定位仍在产品方案的待定模块中；首版统一使用中性基础参数。
-    const stats = MAHJONG_BASE_TOWER_STATS
+    const originalStats = createMahjongRandomStats(tileResource.tile.suit)
+    const mahjongState = createSingleMahjongTowerState(tileResource.tile, originalStats)
+    const stats = calculateMahjongFormationStats(
+      mahjongState.activeSources,
+      mahjongState.formation,
+      mahjongState.suit
+    )
     const pixelPos = gridToPixel(gridPos.row, gridPos.col)
     
     const newTower: Tower = {
       id: `tower_${Date.now()}_${Math.random()}`,
       mahjongTile: tileResource.tile,
+      mahjongState,
       level: 'chipped',
       gridPosition: gridPos,
       position: pixelPos,
       damage: stats.damage,
-      range: stats.range,
-      attackSpeed: stats.attackSpeed,
+      range: stats.attackRange,
+      attackSpeed: stats.attackIntervalMs,
       lastAttackTime: 0,
-      damageType: stats.damageType,
+      damageType: MAHJONG_SUIT_COMBAT_CONFIG[tileResource.tile.suit].damageType,
     }
     
     // 添加到地图(标记为临时塔)
@@ -366,66 +462,23 @@ export function useGameEngine() {
 
   /** 从本轮三张落地牌中激活一张，其余两张原地成为永久牌墙。 */
   const finalizeTowers = useCallback((keepTowerId: string) => {
-    const { towers, storedTowers, grid, currentBatchTowerIds } = gameStateRef.current
+    const state = gameStateRef.current
 
-    if (
-      uiState.gameStatus !== 'deciding' ||
-      !canFinalizeTowerBatch(
-        currentBatchTowerIds,
-        keepTowerId,
-        ECONOMY_CONFIG.towersPerRound
-      )
-    ) {
-      return false
-    }
-    
-    console.log('开始处理塔的决策,保留:', keepTowerId)
-    console.log('当前批次塔IDs:', currentBatchTowerIds)
-    
-    // ✅ 只处理当前批次的塔
-    currentBatchTowerIds.forEach(towerId => {
-      const tower = towers.find(t => t.id === towerId)
-      if (!tower) {
-        console.warn('找不到塔:', towerId)
-        return
-      }
-      
-      if (tower.id === keepTowerId) {
-        // 激活牌继续留在场上，并加入跨波次索引。
-        console.log(`保留激活牌: ${tower.mahjongTile?.id} 在位置 (${tower.gridPosition.row}, ${tower.gridPosition.col})`)
+    if (uiState.gameStatus !== 'deciding') return false
+    const result = applyFinalizeMahjongBatchAction(
+      toMahjongEngineActionState(state, uiState.gold),
+      state.currentBatchTowerIds,
+      keepTowerId
+    )
+    if (!result.ok) return false
 
-        // 创建副本加入场上保留塔索引。
-        const towerCopy = { ...tower }
-        storedTowers.push(towerCopy)
-        
-        // ⚠️ 关键: 不从towers数组移除,格子保持tower类型
-        // 这样塔会继续显示在地图上并攻击敌人
-        
-      } else {
-        // 其他塔变成障碍物
-        console.log(`数牌变为牌墙: ${tower.mahjongTile?.id} 在位置 (${tower.gridPosition.row}, ${tower.gridPosition.col})`)
-        
-        const index = towers.findIndex(t => t.id === tower.id)
-        if (index !== -1) {
-          towers.splice(index, 1)
-        }
-        
-        const { gridPosition } = tower
-        grid[gridPosition.row][gridPosition.col] = {
-          ...grid[gridPosition.row][gridPosition.col],
-          type: 'obstacle',
-          towerId: undefined,
-          mahjongTile: tower.mahjongTile
-        }
-        gameStateRef.current.obstacleOrder.push({ ...gridPosition })
-      }
-    })
+    commitMahjongEngineActionState(state, result.state)
     
     // 清空当前批次列表
-    gameStateRef.current.currentBatchTowerIds = []
+    state.currentBatchTowerIds = []
 
-    gameStateRef.current.mahjong.handResolutionMode = canGambleForMahjongHonor(
-      gameStateRef.current.mahjong.roundTiles
+    state.mahjong.handResolutionMode = canGambleForMahjongHonor(
+      state.mahjong.roundTiles
     ) ? 'choosing' : 'keeping'
     
     setUiState(prev => ({
@@ -433,12 +486,10 @@ export function useGameEngine() {
       wood: 0,
       gameStatus: 'resolving_hand',
       canPlaceTowers: false,
-      ...createMahjongUiState(gameStateRef.current.mahjong)
+      ...createMahjongUiState(state.mahjong)
     }))
-    
-    console.log('最终塔数量:', towers.length, '场上保留塔数量:', storedTowers.length)
     return true
-  }, [uiState.gameStatus])
+  }, [uiState.gameStatus, uiState.gold])
 
   const keepMahjongHand = useCallback((tileId: string) => {
     if (uiState.gameStatus !== 'resolving_hand') return false
@@ -516,6 +567,73 @@ export function useGameEngine() {
     }))
     return true
   }, [uiState.gameStatus])
+
+  const synthesizeMahjong = useCallback((
+    request: SynthesizeMahjongRequest
+  ): SynthesizeMahjongResult => {
+    const state = gameStateRef.current
+    const result = applySynthesizeMahjongAction(
+      toMahjongEngineActionState(state, uiState.gold),
+      uiState.gameStatus,
+      request
+    )
+    if (!result.ok) return { ok: false, reason: result.reason }
+
+    commitMahjongEngineActionState(state, result.state)
+    state.currentPath = calculatePath(state.grid)
+    setUiState(prev => ({
+      ...prev,
+      gold: result.state.gold,
+      functionTiles: [...result.state.functionTiles],
+      mahjongPoolCount: result.state.pool.length
+    }))
+    return { ok: true, towerId: result.towerId }
+  }, [calculatePath, uiState.gameStatus, uiState.gold])
+
+  const attachMahjongHonor = useCallback((
+    towerId: string,
+    attachment: MahjongAttachment
+  ): AttachMahjongHonorResult => {
+    const state = gameStateRef.current
+    const result = applyAttachMahjongHonorAction(
+      toMahjongEngineActionState(state, uiState.gold),
+      uiState.gameStatus,
+      towerId,
+      attachment
+    )
+    if (!result.ok) return { ok: false, reason: result.reason }
+
+    commitMahjongEngineActionState(state, result.state)
+    setUiState(prev => ({
+      ...prev,
+      functionTiles: [...result.state.functionTiles]
+    }))
+    return { ok: true }
+  }, [uiState.gameStatus, uiState.gold])
+
+  const removeMahjongWall = useCallback((
+    position: GridPosition
+  ): RemoveMahjongWallResult => {
+    const state = gameStateRef.current
+    const result = applyRemoveMahjongWallAction(
+      toMahjongEngineActionState(state, uiState.gold),
+      uiState.gameStatus,
+      position
+    )
+    if (!result.ok) return { ok: false, reason: result.reason }
+
+    commitMahjongEngineActionState(state, result.state)
+    state.currentPath = calculatePath(state.grid)
+    setUiState(prev => ({
+      ...prev,
+      gold: result.state.gold,
+      mahjongPoolCount: result.state.pool.length
+    }))
+    return {
+      ok: true,
+      returnedTileId: result.returnedTileId
+    }
+  }, [calculatePath, uiState.gameStatus, uiState.gold])
   
   /**
    * 开始下一波敌人
@@ -643,6 +761,13 @@ export function useGameEngine() {
 
     enemies.forEach(enemy => {
       if (enemy.reachedEnd || enemy.isDead) return
+
+      if (enemy.mahjongVisualEffects) {
+        enemy.mahjongVisualEffects.armorBreakTimer = Math.max(
+          0,
+          (enemy.mahjongVisualEffects.armorBreakTimer ?? 0) - deltaTime
+        )
+      }
       
       // ========== 更新毒素效果 ==========
       if (enemy.poisonEffects && enemy.poisonEffects.length > 0) {
@@ -657,7 +782,74 @@ export function useGameEngine() {
         }
       }
 
-      if (enemy.isDead) return
+      const state = gameStateRef.current
+      if (enemy.isDead) {
+        state.mahjongTargetEffects.delete(enemy.id)
+        return
+      }
+
+      const mahjongRuntime = state.mahjongTargetEffects.get(enemy.id)
+      if (mahjongRuntime) {
+        const effectUpdate = advanceMahjongRuntimeEffects(
+          mahjongRuntime.effects,
+          state.gameTime,
+          deltaTime
+        )
+        let pendingPoisonDamage = mahjongRuntime.pendingPoisonDamage
+          + effectUpdate.poisonDamage
+        let pendingBurnDamage = mahjongRuntime.pendingBurnDamage
+          + effectUpdate.burnDamage
+        const displayElapsedMs = mahjongRuntime.displayElapsedMs + deltaTime
+        const totalDamage = effectUpdate.poisonDamage + effectUpdate.burnDamage
+        const damageIsLethal = totalDamage >= enemy.health
+        const shouldDisplayDamage = displayElapsedMs >= 1000
+          || damageIsLethal
+          || !hasMahjongRuntimeEffects(effectUpdate.effects)
+
+        if (shouldDisplayDamage) {
+          queueDamageNumber(enemy, pendingPoisonDamage, 'poison')
+          queueDamageNumber(enemy, pendingBurnDamage, 'burn')
+          pendingPoisonDamage = 0
+          pendingBurnDamage = 0
+        }
+
+        if (totalDamage > 0 && applyEnemyDamage(enemy, totalDamage)) {
+          setUiState(prev => ({ ...prev, gold: prev.gold + enemy.reward }))
+        }
+
+        const visualEffects = enemy.mahjongVisualEffects ?? {}
+        visualEffects.poisonStacks = effectUpdate.effects.poisons.reduce(
+          (total, poison) => total + poison.stacks,
+          0
+        )
+        visualEffects.burnTimer = effectUpdate.effects.burn
+          ? Math.max(0, effectUpdate.effects.burn.expiresAtMs - state.gameTime)
+          : 0
+        enemy.mahjongVisualEffects = visualEffects
+
+        if (enemy.isDead) {
+          state.mahjongTargetEffects.delete(enemy.id)
+          return
+        }
+
+        if (
+          hasMahjongRuntimeEffects(effectUpdate.effects)
+          || pendingPoisonDamage > 0
+          || pendingBurnDamage > 0
+        ) {
+          state.mahjongTargetEffects.set(enemy.id, {
+            effects: effectUpdate.effects,
+            pendingPoisonDamage,
+            pendingBurnDamage,
+            displayElapsedMs: shouldDisplayDamage ? 0 : displayElapsedMs
+          })
+        } else {
+          state.mahjongTargetEffects.delete(enemy.id)
+        }
+      } else if (enemy.mahjongVisualEffects) {
+        enemy.mahjongVisualEffects.poisonStacks = 0
+        enemy.mahjongVisualEffects.burnTimer = 0
+      }
       
       // ========== 更新眩晕和减速状态，收集自由移动意图 ==========
       const wasSlowed = (enemy.slowTimer ?? 0) > 0
@@ -707,6 +899,9 @@ export function useGameEngine() {
     })
 
     if (escapedEnemies.length > 0) {
+      escapedEnemies.forEach(enemy => {
+        gameStateRef.current.mahjongTargetEffects.delete(enemy.id)
+      })
       setUiState(prev => {
         const mineResult = getStateAfterMineDamageBatch(
           prev.mineHealth,
@@ -801,12 +996,80 @@ export function useGameEngine() {
    * @param deltaTime - 距离上一帧的时间间隔(ms)
    */
   const processTowerAttacks = useCallback(() => {
-    const { towers, enemies } = gameStateRef.current
-    const now = gameStateRef.current.gameTime
+    const state = gameStateRef.current
+    const { towers, enemies } = state
+    const now = state.gameTime
     
     towers.forEach(tower => {
-      const targets = selectTowerTargets(tower, enemies)
+      const mahjongState = tower.mahjongState
+      const targetingTower = mahjongState?.formation === 'chow'
+        ? { ...tower, multiTarget: 3 }
+        : tower
+      const targets = selectTowerTargets(targetingTower, enemies)
       if (targets.length === 0) return
+
+      if (mahjongState) {
+        const profile = createMahjongAttackProfile(
+          tower.id,
+          mahjongState,
+          tower.damage
+        )
+        const previousFocus = state.mahjongBambooFocus.get(tower.id)
+        if (
+          previousFocus
+          && (
+            previousFocus.targetId !== targets[0].id
+            || now - previousFocus.lastHitAtMs >= (profile.focusFire?.resetAfterMs ?? Infinity)
+          )
+        ) {
+          state.mahjongBambooFocus.delete(tower.id)
+        }
+        const sequence = state.mahjongAttackSequence
+        const cycleId = `${tower.id}:${sequence}`
+        const attackPlan = createAttackPlan({
+          cycleId,
+          profile,
+          targetIds: targets.map(target => target.id),
+          nowMs: now,
+          bambooFocus: state.mahjongBambooFocus.get(tower.id)
+        })
+        const attackInterval = tower.attackSpeed / attackPlan.attackFrequencyMultiplier
+        if (now - tower.lastAttackTime < attackInterval) return
+
+        state.mahjongAttackSequence += 1
+        attackPlan.hits.forEach((hit, index) => {
+          const bulletId = `mahjong_bullet_${sequence}_${index}`
+          const bullet: Bullet = {
+            id: bulletId,
+            position: { ...tower.position },
+            originPosition: { ...tower.position },
+            attackRange: tower.range,
+            targetId: hit.targetId,
+            damage: hit.rawDamage,
+            damageType: hit.damageType,
+            speed: 300,
+            mahjongVisual: {
+              suit: mahjongState.suit,
+              formation: mahjongState.formation,
+              attachments: [...mahjongState.attachments],
+              cycleId,
+              projectileCount: hit.projectileCount,
+              attackStartedAtMs: now
+            }
+          }
+          state.mahjongBulletHits.set(bulletId, hit)
+          state.bullets.push(bullet)
+        })
+        tower.lastAttackTime = now
+
+        const soundType: SoundType = mahjongState.suit === 'characters'
+          ? 'ruby'
+          : mahjongState.suit === 'bamboo'
+            ? 'emerald'
+            : 'opal'
+        soundManager.play(soundType)
+        return
+      }
       
       // 检查冷却时间
       if (now - tower.lastAttackTime >= tower.attackSpeed) {
@@ -831,7 +1094,7 @@ export function useGameEngine() {
             pierce: tower.pierce
           }
 
-          gameStateRef.current.bullets.push(bullet)
+          state.bullets.push(bullet)
         })
         tower.lastAttackTime = now
         
@@ -874,6 +1137,123 @@ export function useGameEngine() {
       if (applyEnemyDamage(target, damage)) {
         setUiState(prev => ({ ...prev, gold: prev.gold + target.reward }))
       }
+    }
+
+    const state = gameStateRef.current
+    const mahjongHit = state.mahjongBulletHits.get(bullet.id)
+    if (mahjongHit) {
+      state.mahjongBulletHits.delete(bullet.id)
+      const currentRuntime = state.mahjongTargetEffects.get(enemy.id)
+      const previousStunExpiry = currentRuntime?.effects.stun?.expiresAtMs
+        ?? state.gameTime
+      const resolved = resolveHitEffects({
+        hit: mahjongHit,
+        target: enemy,
+        targetEffects: currentRuntime?.effects ?? EMPTY_MAHJONG_TARGET_EFFECTS,
+        bambooFocus: state.mahjongBambooFocus.get(mahjongHit.sourceId),
+        nowMs: state.gameTime,
+        random: Math.random
+      })
+
+      if (bullet.mahjongVisual) {
+        state.mahjongPresentationEvents.push({
+          id: `mahjong-impact-${bullet.id}`,
+          position: { ...enemy.position },
+          suit: bullet.mahjongVisual.suit,
+          formation: bullet.mahjongVisual.formation,
+          attachments: [...bullet.mahjongVisual.attachments],
+          projectileCount: bullet.mahjongVisual.projectileCount,
+          startedAtGameTimeMs: state.gameTime,
+          elapsedMs: 0,
+          durationMs: 560,
+          executed: resolved.executed,
+          stunTriggered: (resolved.targetEffects.stun?.expiresAtMs ?? 0) > previousStunExpiry
+        })
+      }
+
+      damageTarget(
+        enemy,
+        resolved.damage,
+        resolved.executed ? 'pure' : mahjongHit.damageType,
+        resolved.critical
+      )
+      if (resolved.bambooFocus) {
+        state.mahjongBambooFocus.set(mahjongHit.sourceId, resolved.bambooFocus)
+      }
+
+      if (resolved.splash) {
+        state.enemies.forEach(otherEnemy => {
+          if (
+            otherEnemy.id === enemy.id
+            || otherEnemy.isDead
+            || otherEnemy.reachedEnd
+          ) return
+
+          const distance = Math.hypot(
+            otherEnemy.position.x - enemy.position.x,
+            otherEnemy.position.y - enemy.position.y
+          )
+          if (distance > resolved.splash!.radius) return
+
+          const splashDamage = calculateDamage(
+            resolved.splash!.rawDamage,
+            resolved.splash!.damageType,
+            otherEnemy,
+            0,
+            1,
+            1
+          )
+          damageTarget(
+            otherEnemy,
+            splashDamage.damage,
+            resolved.splash!.damageType
+          )
+        })
+      }
+
+      if (!enemy.isDead) {
+        const effects = resolved.targetEffects
+        state.mahjongTargetEffects.set(enemy.id, {
+          effects,
+          pendingPoisonDamage: currentRuntime?.pendingPoisonDamage ?? 0,
+          pendingBurnDamage: currentRuntime?.pendingBurnDamage ?? 0,
+          displayElapsedMs: currentRuntime?.displayElapsedMs ?? 0
+        })
+
+        if (effects.slow) {
+          enemy.slowTimer = Math.max(
+            enemy.slowTimer ?? 0,
+            effects.slow.expiresAtMs - state.gameTime
+          )
+          enemy.slowEffect = Math.max(
+            enemy.slowEffect ?? 0,
+            effects.slow.amount
+          )
+        }
+        if (effects.stun) {
+          enemy.isStunned = true
+          enemy.stunTimer = Math.max(
+            enemy.stunTimer ?? 0,
+            effects.stun.expiresAtMs - state.gameTime
+          )
+        }
+
+        const visualEffects = enemy.mahjongVisualEffects ?? {}
+        if (resolved.armorIgnore > 0) visualEffects.armorBreakTimer = 350
+        visualEffects.poisonStacks = effects.poisons.reduce(
+          (total, poison) => total + poison.stacks,
+          0
+        )
+        visualEffects.burnTimer = effects.burn
+          ? Math.max(0, effects.burn.expiresAtMs - state.gameTime)
+          : 0
+        enemy.mahjongVisualEffects = visualEffects
+      } else {
+        state.mahjongTargetEffects.delete(enemy.id)
+      }
+
+      state.enemies = state.enemies.filter(candidate => !candidate.isDead)
+      return
     }
 
     const damageResult = calculateDamage(
@@ -987,6 +1367,7 @@ export function useGameEngine() {
       
       if (!target) {
         // 目标已死亡,移除子弹
+        gameStateRef.current.mahjongBulletHits.delete(bullet.id)
         bullets.splice(i, 1)
         continue
       }
@@ -994,6 +1375,7 @@ export function useGameEngine() {
       const movement = advanceBullet(bullet, target, deltaTime)
 
       if (movement.status === 'out_of_range') {
+        gameStateRef.current.mahjongBulletHits.delete(bullet.id)
         bullets.splice(i, 1)
       } else if (movement.status === 'hit') {
         // 命中目标
@@ -1022,6 +1404,12 @@ export function useGameEngine() {
     const state = gameStateRef.current
     const hadActiveDamageNumbers = state.damageNumbers.length > 0
     state.damageNumbers = advanceDamageNumbers(state.damageNumbers, deltaTime)
+    state.mahjongPresentationEvents = state.mahjongPresentationEvents
+      .map(event => ({
+        ...event,
+        elapsedMs: Math.min(event.durationMs, event.elapsedMs + Math.max(0, deltaTime))
+      }))
+      .filter(event => event.elapsedMs < event.durationMs)
     if (hadActiveDamageNumbers && state.damageNumbers.length === 0) {
       setHasActiveDamageNumbers(false)
     }
@@ -1043,6 +1431,9 @@ export function useGameEngine() {
         // 波次完成
         gameStateRef.current.waveInProgress = false
         gameStateRef.current.bullets = []
+        gameStateRef.current.mahjongBulletHits.clear()
+        gameStateRef.current.mahjongTargetEffects.clear()
+        gameStateRef.current.mahjongBambooFocus.clear()
 
         const nextStatus = getStatusAfterWave(uiState.wave, WAVES.length)
         if (nextStatus === 'building') {
@@ -1124,7 +1515,7 @@ export function useGameEngine() {
       damageNumbers: [],
       damageNumberSequence: 0,
       grid,
-      storedTowers: [],
+      storedTowerIds: [],
       currentPath: calculatePath(grid),
       placementPreview: null,
       waveInProgress: false,
@@ -1135,7 +1526,12 @@ export function useGameEngine() {
       currentBatchTowerIds: [],
       currentHealthMultiplier: 1,
       obstacleOrder: [],
-      mahjong
+      mahjong,
+      mahjongBulletHits: new Map(),
+      mahjongTargetEffects: new Map(),
+      mahjongBambooFocus: new Map(),
+      mahjongPresentationEvents: [],
+      mahjongAttackSequence: 0
     }
     setHasActiveDamageNumbers(false)
     setUiState(createInitialUiState(mahjong))
@@ -1152,6 +1548,9 @@ export function useGameEngine() {
     revealMahjongHandSuits,
     keepMahjongHand,
     gambleForMahjongHonor,
+    synthesizeMahjong,
+    attachMahjongHonor,
+    removeMahjongWall,
     startWave,
     pause,
     resume,

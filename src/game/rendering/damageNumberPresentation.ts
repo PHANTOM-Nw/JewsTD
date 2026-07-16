@@ -37,6 +37,11 @@ const DAMAGE_COLORS: Record<DamageNumberType, DamageNumberColors> = {
     fill: '#b9f57c',
     stroke: '#397320',
     shadow: 'rgba(111, 218, 72, 0.7)'
+  },
+  burn: {
+    fill: '#ffb05f',
+    stroke: '#8d2e18',
+    shadow: 'rgba(255, 91, 37, 0.8)'
   }
 }
 
@@ -63,7 +68,7 @@ export function getDamageNumberPresentation(
   const popProgress = clamp(progress / 0.16, 0, 1)
   const fontSize = damageNumber.critical
     ? 15
-    : damageNumber.damageType === 'poison'
+    : damageNumber.damageType === 'poison' || damageNumber.damageType === 'burn'
       ? 11
       : 12
   const minimumBaseline = fontSize + (damageNumber.critical ? 8 : 6)

@@ -73,13 +73,17 @@ export const OBSTACLE_SPRITES = [
 
 export const TILE_SPRITE = creamStoneCellUrl
 
-export const ALL_SPRITE_URLS = Array.from(new Set([
-  ...Object.values(BASE_TOWER_SPRITES),
-  ...Object.values(SPECIAL_TOWER_SPRITES),
+export const RUNTIME_SPRITE_URLS = Array.from(new Set([
   ...Object.values(ENEMY_SPRITES),
   ...Object.values(GATE_SPRITES),
   ...OBSTACLE_SPRITES,
   TILE_SPRITE
+]))
+
+export const ALL_SPRITE_URLS = Array.from(new Set([
+  ...Object.values(BASE_TOWER_SPRITES),
+  ...Object.values(SPECIAL_TOWER_SPRITES),
+  ...RUNTIME_SPRITE_URLS
 ]))
 
 const imageCache = new Map<string, HTMLImageElement>()
@@ -112,5 +116,5 @@ export function resolveSprite(url: string): HTMLImageElement | null {
 }
 
 export function preloadSpriteAssets(): void {
-  ALL_SPRITE_URLS.forEach(resolveSprite)
+  RUNTIME_SPRITE_URLS.forEach(resolveSprite)
 }

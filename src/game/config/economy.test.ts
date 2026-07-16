@@ -25,4 +25,12 @@ describe('economy configuration', () => {
       MAP_CONFIG.rows * MAP_CONFIG.cols
     )
   })
+
+  it('prices tile walls above pure walls because clearing returns the tile', () => {
+    expect(ECONOMY_CONFIG.mahjongTileWallRemovalGoldCost).toBe(100)
+    expect(ECONOMY_CONFIG.mahjongPureWallRemovalGoldCost).toBe(50)
+    expect(ECONOMY_CONFIG.mahjongTileWallRemovalGoldCost).toBeGreaterThan(
+      ECONOMY_CONFIG.mahjongPureWallRemovalGoldCost
+    )
+  })
 })

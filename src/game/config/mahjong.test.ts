@@ -3,11 +3,18 @@ import type { MahjongNumberTile, MahjongRoundTile } from '../types/game'
 import {
   beginMahjongRound,
   canGambleForMahjongHonor,
+  createMahjongRandomStats,
   createMahjongTilePool,
   MAHJONG_BAMBOO_LAYOUTS,
   MAHJONG_DOT_LAYOUTS,
   MAHJONG_DRAWS_PER_ROUND,
+  MAHJONG_FORMATION_MECHANICS,
+  MAHJONG_FORMATION_MULTIPLIERS,
+  MAHJONG_GREEN_ATTACHMENT_CONFIG,
   MAHJONG_RANKS,
+  MAHJONG_RED_ATTACHMENT_CONFIG,
+  MAHJONG_SUIT_COMBAT_CONFIG,
+  MAHJONG_WHITE_CATALYST_CONFIG,
   resolveMahjongHonorGamble,
   toMahjongRoundTileViews
 } from './mahjong'
@@ -36,6 +43,16 @@ describe('mahjong number tile pool', () => {
     for (const faceTiles of tilesByFace.values()) {
       expect(faceTiles).toHaveLength(4)
       expect(faceTiles.map(tile => tile.copy).sort()).toEqual([1, 2, 3, 4])
+    }
+  })
+
+  it('uses opaque identities that do not encode a tile face', () => {
+    const pool = createMahjongTilePool()
+
+    for (const tile of pool) {
+      expect(tile.id).toMatch(/^mahjong-tile-/)
+      expect(tile.id).not.toContain(tile.suit)
+      expect(tile.id).not.toMatch(/^(characters|bamboo|dots)-[1-9]-[1-4]$/)
     }
   })
 
@@ -87,6 +104,7 @@ describe('mahjong hidden information', () => {
     expect(views[1]).not.toHaveProperty('rank')
     expect(views[1]).not.toHaveProperty('copy')
     expect(views[1]).not.toHaveProperty('tile')
+    expect(views[1]).not.toHaveProperty('stats')
   })
 
   it('reveals newly drawn suits only after the player chooses hand keeping', () => {
@@ -136,6 +154,81 @@ describe('mahjong hidden information', () => {
     keepingViews.forEach(view => {
       expect(view).not.toHaveProperty('rank')
       expect(view).not.toHaveProperty('tile')
+    })
+  })
+})
+
+describe('mahjong v0.1 combat configuration', () => {
+  it.each([
+    ['characters', [30, 900, 115], [38, 1200, 140]],
+    ['bamboo', [13, 450, 125], [19, 650, 155]],
+    ['dots', [20, 900, 110], [28, 1200, 135]]
+  ] as const)('rolls %s stats independently on integer closed intervals', (
+    suit,
+    minimum,
+    maximum
+  ) => {
+    expect(createMahjongRandomStats(suit, () => 0)).toEqual({
+      damage: minimum[0],
+      attackIntervalMs: minimum[1],
+      attackRange: minimum[2]
+    })
+    expect(createMahjongRandomStats(suit, () => 1)).toEqual({
+      damage: maximum[0],
+      attackIntervalMs: maximum[1],
+      attackRange: maximum[2]
+    })
+
+    const rolls = [0, 1, .5]
+    expect(createMahjongRandomStats(suit, () => rolls.shift()!)).toEqual({
+      damage: minimum[0],
+      attackIntervalMs: maximum[1],
+      attackRange: minimum[2] + Math.floor((maximum[2] - minimum[2] + 1) / 2)
+    })
+  })
+
+  it('keeps suit, formation and honor values in the Mahjong configuration', () => {
+    expect(MAHJONG_SUIT_COMBAT_CONFIG.characters.baseMechanics.crit).toEqual({
+      chance: .15,
+      multiplier: 2
+    })
+    expect(MAHJONG_FORMATION_MULTIPLIERS.kong).toEqual({
+      damage: 2.7,
+      attackFrequency: 1.4,
+      attackRange: 1.2
+    })
+    expect(MAHJONG_FORMATION_MECHANICS.bamboo.pung.poison).toEqual({
+      damagePerSecond: 7,
+      durationMs: 4000,
+      maxStacks: 3
+    })
+    expect(MAHJONG_FORMATION_MECHANICS.dots.kong.splash).toEqual({
+      radius: 55,
+      damageRatio: 1
+    })
+    expect(MAHJONG_RED_ATTACHMENT_CONFIG.burn.durationMs).toBe(3000)
+    expect(MAHJONG_GREEN_ATTACHMENT_CONFIG).toEqual({
+      characters: {
+        executeHealthRatio: .12,
+        bossExecuteHealthRatio: .05
+      },
+      bamboo: {
+        attackFrequencyBonusPerHit: .03,
+        maxStacks: 10,
+        resetAfterMs: 2000
+      },
+      dots: {
+        stunChance: .12,
+        stunDurationMs: 800,
+        bossStunDurationMs: 350
+      }
+    })
+    expect(MAHJONG_WHITE_CATALYST_CONFIG).toMatchObject({
+      allowedFormations: ['chow', 'pung'],
+      maxPerSynthesis: 1,
+      contributesRandomStats: false,
+      canBeAnchor: false,
+      consumedOnUse: true
     })
   })
 })
