@@ -56,6 +56,17 @@ const gambleTiles: MahjongRoundTileView[] = [
   }
 ]
 
+const twoMatchingGambleTiles: MahjongRoundTileView[] = [
+  gambleTiles[0],
+  {
+    id: 'two-matching-draw',
+    source: 'draw',
+    visibility: 'suit',
+    suit: 'characters'
+  },
+  gambleTiles[2]
+]
+
 const keepOnlyTiles: MahjongRoundTileView[] = [
   gambleTiles[1],
   gambleTiles[2]
@@ -97,7 +108,7 @@ describe('BuildPanel hand resolution choice', () => {
     const panel = renderHandPanel({
       roundTiles: gambleTiles,
       canGambleForHonor: true,
-      honorGambleChance: .1,
+      honorGambleChance: .5,
       onKeepHand: keepHand,
       onGambleForHonor: gamble
     })
@@ -107,7 +118,7 @@ describe('BuildPanel hand resolution choice', () => {
     expect(markup).toContain('万 · 点数未知')
     expect(markup).toContain('条 · 点数未知')
     expect(markup).toContain('筒 · 点数未知')
-    expect(markup).toContain('赌中發白（成功率 10%）')
+    expect(markup).toContain('赌中發白（成功率 50%）')
     expect(markup.match(/新牌/g)).toHaveLength(2)
     expect(markup).toContain('旧手牌')
     // 点数信息边界：没有任何正面牌，点数永远只以「未知」呈现。
@@ -131,14 +142,14 @@ describe('BuildPanel hand resolution choice', () => {
 
   it('shows the raised success rate for a two-matching composition', () => {
     const panel = renderHandPanel({
-      roundTiles: gambleTiles,
+      roundTiles: twoMatchingGambleTiles,
       canGambleForHonor: true,
-      honorGambleChance: .35,
+      honorGambleChance: .75,
       onGambleForHonor: vi.fn()
     })
     const markup = renderToStaticMarkup(panel)
 
-    expect(markup).toContain('赌中發白（成功率 35%）')
+    expect(markup).toContain('赌中發白（成功率 75%）')
     expect(markup).toContain('三张全部回池；成功等概率获得中／發／白之一')
   })
 

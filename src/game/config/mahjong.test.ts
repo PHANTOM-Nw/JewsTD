@@ -311,16 +311,16 @@ describe('mahjong honor gamble', () => {
 
   it('exposes the tiered success chances', () => {
     expect(MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE).toEqual({
-      mixed: .25,
-      twoMatching: .5,
-      allMatching: .75
+      mixed: .5,
+      twoMatching: .75,
+      allMatching: 1
     })
   })
 
   it('returns the composition chance only when the gamble is available', () => {
-    expect(getMahjongHonorGambleChance(allMatchingTiles)).toBe(.75)
-    expect(getMahjongHonorGambleChance(twoMatchingTiles)).toBe(.5)
-    expect(getMahjongHonorGambleChance(mixedTiles)).toBe(.25)
+    expect(getMahjongHonorGambleChance(allMatchingTiles)).toBe(1)
+    expect(getMahjongHonorGambleChance(twoMatchingTiles)).toBe(.75)
+    expect(getMahjongHonorGambleChance(mixedTiles)).toBe(.5)
     expect(getMahjongHonorGambleChance(allMatchingTiles.slice(0, 2))).toBe(0)
     expect(getMahjongHonorGambleChance(
       allMatchingTiles.map(resource => ({ ...resource, source: 'draw' as const }))
@@ -329,43 +329,43 @@ describe('mahjong honor gamble', () => {
 
   it('awards an equally likely honor when the all-matching roll wins', () => {
     expect(canGambleForMahjongHonor(allMatchingTiles)).toBe(true)
-    expect(resolveMahjongHonorGamble(allMatchingTiles, sequenceRandom([.74, 0]))).toEqual({
+    expect(resolveMahjongHonorGamble(allMatchingTiles, sequenceRandom([.999999999, 0]))).toEqual({
       success: true,
       honor: 'red'
     })
   })
 
-  it('fails on the all-matching boundary without consuming the honor roll', () => {
+  it('always succeeds for all-matching tiles and consumes the honor roll', () => {
     let calls = 0
     const random = () => {
       calls += 1
-      return .75
+      return 1
     }
 
     expect(resolveMahjongHonorGamble(allMatchingTiles, random)).toEqual({
-      success: false,
-      honor: null
-    })
-    expect(calls).toBe(1)
-  })
-
-  it('resolves a two-matching gamble against its 50% threshold', () => {
-    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.49, .5]))).toEqual({
-      success: true,
-      honor: 'green'
-    })
-    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.5]))).toEqual({
-      success: false,
-      honor: null
-    })
-  })
-
-  it('resolves a fully mixed gamble against its 25% threshold', () => {
-    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.24, .999999999]))).toEqual({
       success: true,
       honor: 'white'
     })
-    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.25]))).toEqual({
+    expect(calls).toBe(2)
+  })
+
+  it('resolves a two-matching gamble against its 75% threshold', () => {
+    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.74, .5]))).toEqual({
+      success: true,
+      honor: 'green'
+    })
+    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.75]))).toEqual({
+      success: false,
+      honor: null
+    })
+  })
+
+  it('resolves a fully mixed gamble against its 50% threshold', () => {
+    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.49, .999999999]))).toEqual({
+      success: true,
+      honor: 'white'
+    })
+    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.5]))).toEqual({
       success: false,
       honor: null
     })

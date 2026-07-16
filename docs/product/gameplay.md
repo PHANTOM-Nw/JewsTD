@@ -59,9 +59,9 @@ playing → game_over / victory
 
 | 花色组成 | 成功率 |
 | --- | ---: |
-| 3 张互不相同 | 25% |
-| 恰好 2 张同花色 | 50% |
-| 3 张全部同花色 | 75% |
+| 3 张互不相同 | 50% |
+| 恰好 2 张同花色 | 75% |
+| 3 张全部同花色 | 100% |
 
 成功后中、發、白等概率（各 1/3）获得 1 张；无论成功还是失败，3 张数牌都回池，下一回合都没有旧手牌。具体概率常量以 `src/game/config/mahjong.ts` 的 `MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE`（`mixed`/`twoMatching`/`allMatching` 三档）为准，上表仅作说明。
 

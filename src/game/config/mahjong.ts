@@ -378,11 +378,11 @@ export function canGambleForMahjongHonor(roundTiles: readonly MahjongRoundTile[]
     && roundTiles.filter(resource => resource.source === 'draw').length === 2
 }
 
-/** 越同花色成功率越高：3 花色 25%、2 同 50%、全同 75%。 */
+/** 越同花色成功率越高：3 花色 50%、2 同 75%、全同 100%。 */
 export const MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE: Record<MahjongSuitMatchTier, number> = {
-  mixed: .25,
-  twoMatching: .5,
-  allMatching: .75
+  mixed: .5,
+  twoMatching: .75,
+  allMatching: 1
 }
 
 export function classifyMahjongSuitMatch(
