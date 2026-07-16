@@ -30,8 +30,15 @@
   background: #8fd335 url('../assets/backgrounds/sunny-garden.png') center / cover no-repeat;
 }
 
+.game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+}
+
 .game-title {
-  align-self: center;
   margin: 0;
   padding: 2px 14px 3px;
   border: 2px solid rgba(173, 103, 24, 0.6);
@@ -148,7 +155,6 @@
 
 .game-ui__utilities {
   display: flex;
-  justify-content: flex-end;
   gap: 5px;
 }
 
@@ -659,6 +665,11 @@
 }
 
 .wave-complete-notice {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  right: 7px;
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -842,76 +853,6 @@
   background: #74b843;
 }
 
-.mahjong-board-access {
-  width: 100%;
-  padding: 7px 9px;
-  border: 2px solid #d9b46f;
-  border-radius: 12px;
-  color: var(--brown);
-  background: rgba(255, 248, 222, 0.94);
-}
-
-.mahjong-board-access summary {
-  min-height: 28px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.mahjong-board-access__hint {
-  margin: 4px 0 7px;
-  color: #775735;
-  font-size: 10px;
-}
-
-.mahjong-board-access__group {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.mahjong-board-access__group > span {
-  grid-column: 1 / -1;
-  color: #86694a;
-  font-size: 10px;
-}
-
-.mahjong-board-access__group button {
-  display: grid;
-  min-width: 0;
-  min-height: 54px;
-  grid-template-columns: 34px minmax(0, 1fr);
-  grid-template-rows: repeat(3, auto);
-  align-items: center;
-  gap: 1px 6px;
-  padding: 5px;
-  border: 1px solid #d6ad68;
-  border-radius: 9px;
-  color: var(--brown);
-  text-align: left;
-  background: #fff9e8;
-}
-
-.mahjong-board-access__group button > .mahjong-tile,
-.mahjong-board-access__group button > b {
-  grid-row: 1 / -1;
-}
-
-.mahjong-board-access__group button > b {
-  display: grid;
-  width: 30px;
-  height: 41px;
-  place-items: center;
-  border: 2px solid #9a7545;
-  border-radius: 5px;
-  background: #d8b987;
-}
-
-.mahjong-board-access__group button span { font-size: 10px; font-weight: 900; }
-.mahjong-board-access__group button small { font-size: 8px; line-height: 1.25; }
-.mahjong-board-access__pair-hint { color: #6f552f; }
-
 .mahjong-action-message {
   min-height: 16px;
   margin: 5px 0;
@@ -921,9 +862,27 @@
 }
 
 .mahjong-action-message--global {
-  width: 100%;
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  bottom: 7px;
+  z-index: 30;
   margin: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: #8b3c22;
+  font-size: 11px;
+  font-weight: 800;
   text-align: center;
+  pointer-events: none;
+  background: rgba(255, 240, 206, 0.96);
+  box-shadow: var(--panel-shadow);
+}
+
+.mahjong-action-message--global:empty {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .mahjong-synthesis__routes,

@@ -55,6 +55,32 @@ export function GameUI({
 
   return (
     <header className="game-ui" aria-label="游戏资源与快捷操作">
+      <div className="game-header">
+        <h1 className="game-title">麻将TD</h1>
+        <div className="game-ui__utilities" aria-label="快捷操作">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={toggleSound}
+            aria-label={soundEnabled ? '关闭音效' : '开启音效'}
+            title={soundEnabled ? '关闭音效' : '开启音效'}
+          >
+            {soundEnabled
+              ? <SpeakerHighIcon weight="fill" />
+              : <SpeakerSlashIcon weight="fill" />}
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onResetGame}
+            aria-label="重新开始"
+            title="重新开始"
+          >
+            <ArrowCounterClockwiseIcon weight="bold" />
+          </button>
+        </div>
+      </div>
+
       <div className="game-ui__resources">
         <ResourceCard
           className="game-ui__resource--wood"
@@ -86,29 +112,6 @@ export function GameUI({
           value={uiState.mahjongPoolCount}
           icon={<StackIcon weight="duotone" />}
         />
-      </div>
-
-      <div className="game-ui__utilities" aria-label="快捷操作">
-        <button
-          type="button"
-          className="icon-button"
-          onClick={toggleSound}
-          aria-label={soundEnabled ? '关闭音效' : '开启音效'}
-          title={soundEnabled ? '关闭音效' : '开启音效'}
-        >
-          {soundEnabled
-            ? <SpeakerHighIcon weight="fill" />
-            : <SpeakerSlashIcon weight="fill" />}
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={onResetGame}
-          aria-label="重新开始"
-          title="重新开始"
-        >
-          <ArrowCounterClockwiseIcon weight="bold" />
-        </button>
       </div>
 
       <p className="sr-only" aria-live="polite">

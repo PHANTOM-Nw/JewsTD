@@ -43,6 +43,10 @@ describe('mobile game layout', () => {
     expect(markup).toContain('牌池')
     expect(markup).toContain('103')
     expect(markup).not.toContain('🎮')
+    expect(markup).toContain('麻将TD')
+    expect(markup).toContain('game-header')
+    expect(markup).toContain('aria-label="重新开始"')
+    expect(markup).toMatch(/aria-label="(关闭音效|开启音效)"/)
   })
 
   it('derives the three-build action deck from the economy config', () => {
@@ -71,5 +75,9 @@ describe('mobile game layout', () => {
     expect(markup).not.toContain('清牌墙')
     expect(gameStyles).toMatch(/width:\s*min\(100%,\s*430px\)/)
     expect(gameStyles).toMatch(/aspect-ratio:\s*4\s*\/\s*5/)
+    expect(gameStyles).not.toMatch(/mahjong-board-access/)
+    expect(gameStyles).toMatch(/\.game-header\s*\{/)
+    expect(gameStyles).toMatch(/\.wave-complete-notice\s*\{[^}]*position:\s*absolute/s)
+    expect(gameStyles).toMatch(/\.mahjong-action-message--global\s*\{[^}]*position:\s*absolute/s)
   })
 })

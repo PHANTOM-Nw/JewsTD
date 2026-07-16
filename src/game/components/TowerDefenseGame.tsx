@@ -4,13 +4,7 @@ import { GameCanvas } from './GameCanvas'
 import { GameUI } from './GameUI'
 import { BuildPanel } from './BuildPanel'
 import { MahjongActivationDecision } from './MahjongActivationDecision'
-import {
-  ATTACHMENT_FAILURE_MESSAGES,
-  getMahjongPairRouteHint,
-  getMahjongTowerActionLabel,
-  getMahjongTowerComparisonLabel
-} from './mahjongUiModel'
-import { MahjongTile } from './MahjongTile'
+import { ATTACHMENT_FAILURE_MESSAGES } from './mahjongUiModel'
 import { MahjongSynthesisDialog } from './MahjongSynthesisDialog'
 import { MahjongWallDetail } from './MahjongWallDetail'
 import { MahjongHonorDetail } from './MahjongHonorDetail'
@@ -253,15 +247,13 @@ export const TowerDefenseGame: React.FC = () => {
 
   return (
     <div className="game-shell">
-      <h1 className="game-title">麻将TD</h1>
-
       <GameUI uiState={uiState} onResetGame={handleResetGame} />
-
-      <WaveCompletionNotice gameStatus={uiState.gameStatus} currentWave={uiState.wave} />
 
       <div className="game-main">
         <div className="game-board">
           <GameCanvas onClick={handleCanvasClick} onPlacementPreviewEnd={clearPlacementPreview} />
+
+          <WaveCompletionNotice gameStatus={uiState.gameStatus} currentWave={uiState.wave} />
 
           {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (
             <MahjongActivationDecision
@@ -271,74 +263,11 @@ export const TowerDefenseGame: React.FC = () => {
               onConfirm={handleFinalizeTowers}
             />
           )}
+
+          <p className="mahjong-action-message--global" aria-live="polite">
+            {mahjongActionMessage}
+          </p>
         </div>
-
-        {(uiState.gameStatus === 'building' || uiState.gameStatus === 'ready') && (
-          <details className="mahjong-board-access">
-            <summary>地图棋子与墙体操作（键盘入口）</summary>
-            <p className="mahjong-board-access__hint">
-              {pendingAttachment
-                ? `已选择${MAHJONG_HONOR_LABELS[pendingAttachment]}，请选择一座激活棋子。`
-                : '选择激活棋子打开合成工作台；选择墙体查看拆除详情。'}
-            </p>
-            <div className="mahjong-board-access__group" role="group" aria-label="激活棋子">
-              {activeTowers.length === 0 ? <span>暂无激活棋子</span> : activeTowers.map(tower => {
-                if (!tower.mahjongTile) return null
-                const name = getMahjongTileName(tower.mahjongTile)
-                const comparison = getMahjongTowerComparisonLabel(tower)
-                const pairHint = tower.mahjongState
-                  ? getMahjongPairRouteHint(tower.mahjongState)
-                  : null
-                return (
-                  <button
-                    key={tower.id}
-                    type="button"
-                    onClick={() => selectActiveTower(tower)}
-                    aria-label={getMahjongTowerActionLabel(tower, pendingAttachment)}
-                  >
-                    <MahjongTile tile={tower.mahjongTile} compact />
-                    <span>{name}</span>
-                    <small>{comparison}</small>
-                    {pairHint && <small className="mahjong-board-access__pair-hint">{pairHint}</small>}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="mahjong-board-access__group" role="group" aria-label="牌墙和纯墙体">
-              {mahjongWalls.length === 0 ? <span>暂无墙体</span> : mahjongWalls.map(wall => {
-                const key = `${wall.row}:${wall.col}`
-                const name = wall.mahjongWallKind === 'tile' && wall.mahjongTile
-                  ? `${getMahjongTileName(wall.mahjongTile)}牌墙`
-                  : '纯墙体'
-                const cost = wall.mahjongWallKind === 'tile'
-                  ? ECONOMY_CONFIG.mahjongTileWallRemovalGoldCost
-                  : ECONOMY_CONFIG.mahjongPureWallRemovalGoldCost
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      setSelectedSynthesisAnchor(null)
-                      setSelectedWall(wall)
-                      setMahjongActionMessage('')
-                    }}
-                    aria-label={`查看${name}，${wall.row + 1}行${wall.col + 1}列，拆除${cost}金币`}
-                  >
-                    {wall.mahjongTile
-                      ? <MahjongTile tile={wall.mahjongTile} compact />
-                      : <b aria-hidden="true">墙</b>}
-                    <span>{name}</span>
-                    <small>{wall.row + 1}行{wall.col + 1}列 · {cost}金币</small>
-                  </button>
-                )
-              })}
-            </div>
-          </details>
-        )}
-
-        <p className="mahjong-action-message mahjong-action-message--global" aria-live="polite">
-          {mahjongActionMessage}
-        </p>
 
         <BuildPanel
           wood={uiState.wood}
