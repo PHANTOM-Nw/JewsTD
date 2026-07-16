@@ -391,6 +391,48 @@ describe('applyRemoveMahjongWallAction', () => {
     expect(result.state.obstacleOrder).toEqual([])
   })
 
+  it('allows the returned tail tile to be randomly drawn like any other pool tile', () => {
+    const returnedTile = createTile('returned-wall-tile', 'bamboo', 6)
+    const existingPool = [
+      createTile('pool-a', 'characters', 1),
+      createTile('pool-b', 'dots', 2),
+      createTile('pool-c', 'bamboo', 3),
+      createTile('pool-d', 'characters', 4),
+      createTile('pool-e', 'dots', 5)
+    ]
+    const state = createState([], {
+      pool: existingPool,
+      grid: createGrid([]),
+      obstacleOrder: [{ row: 1, col: 3 }]
+    })
+    state.grid[1][3] = {
+      row: 1,
+      col: 3,
+      type: 'obstacle',
+      mahjongWallKind: 'tile',
+      mahjongTile: returnedTile
+    }
+
+    const removal = applyRemoveMahjongWallAction(
+      state,
+      'ready',
+      { row: 1, col: 3 }
+    )
+
+    expect(removal.ok).toBe(true)
+    if (!removal.ok) return
+    expect(removal.state.pool.at(-1)).toBe(returnedTile)
+
+    const nextRound = beginMahjongRound(removal.state.pool, null, () => .999999)
+
+    expect(nextRound.roundTiles[0]).toEqual({
+      id: returnedTile.id,
+      source: 'draw',
+      tile: returnedTile
+    })
+    expect(nextRound.pool).not.toContain(returnedTile)
+  })
+
   it('charges 50 gold for a pure wall without creating a tile', () => {
     const state = createState([], {
       gold: 50,

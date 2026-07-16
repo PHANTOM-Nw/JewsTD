@@ -312,16 +312,16 @@ describe('mahjong honor gamble', () => {
 
   it('exposes the tiered success chances', () => {
     expect(MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE).toEqual({
-      mixed: .1,
-      twoMatching: .35,
+      mixed: .25,
+      twoMatching: .5,
       allMatching: .75
     })
   })
 
   it('returns the composition chance only when the gamble is available', () => {
     expect(getMahjongHonorGambleChance(allMatchingTiles)).toBe(.75)
-    expect(getMahjongHonorGambleChance(twoMatchingTiles)).toBe(.35)
-    expect(getMahjongHonorGambleChance(mixedTiles)).toBe(.1)
+    expect(getMahjongHonorGambleChance(twoMatchingTiles)).toBe(.5)
+    expect(getMahjongHonorGambleChance(mixedTiles)).toBe(.25)
     expect(getMahjongHonorGambleChance(allMatchingTiles.slice(0, 2))).toBe(0)
     expect(getMahjongHonorGambleChance(
       allMatchingTiles.map(resource => ({ ...resource, source: 'draw' as const }))
@@ -350,23 +350,23 @@ describe('mahjong honor gamble', () => {
     expect(calls).toBe(1)
   })
 
-  it('resolves a two-matching gamble against its 35% threshold', () => {
-    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.34, .5]))).toEqual({
+  it('resolves a two-matching gamble against its 50% threshold', () => {
+    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.49, .5]))).toEqual({
       success: true,
       honor: 'green'
     })
-    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.36]))).toEqual({
+    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.5]))).toEqual({
       success: false,
       honor: null
     })
   })
 
-  it('lets a fully mixed gamble win on its 10% chance', () => {
-    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.09, .999999999]))).toEqual({
+  it('resolves a fully mixed gamble against its 25% threshold', () => {
+    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.24, .999999999]))).toEqual({
       success: true,
       honor: 'white'
     })
-    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.11]))).toEqual({
+    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.25]))).toEqual({
       success: false,
       honor: null
     })
