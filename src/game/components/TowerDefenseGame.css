@@ -22,7 +22,7 @@
   align-items: stretch;
   gap: 8px;
   margin: 0 auto;
-  padding: 8px max(8px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--brown);
@@ -39,6 +39,7 @@
 }
 
 .game-title {
+  flex: 0 0 auto;
   margin: 0;
   padding: 2px 14px 3px;
   border: 2px solid rgba(173, 103, 24, 0.6);
@@ -155,7 +156,12 @@
 
 .game-ui__utilities {
   display: flex;
+  flex: 0 0 auto;
   gap: 5px;
+}
+
+.game-ui__fullscreen {
+  display: none;
 }
 
 .icon-button {
@@ -227,22 +233,15 @@
 }
 
 .game-phase-hint {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  z-index: 35;
   display: flex;
-  width: max-content;
-  max-width: min(calc(100% - 28px), 270px);
   min-width: 0;
+  flex: 1 1 auto;
   align-items: baseline;
   justify-content: center;
   gap: 5px;
   padding: 5px 9px;
-  transform: translateX(-50%);
   border: 2px solid rgba(194, 121, 28, 0.5);
   border-radius: 999px;
-  pointer-events: none;
   background: rgba(255, 249, 225, 0.94);
   box-shadow: 0 3px 10px rgba(82, 48, 12, 0.2);
 }
@@ -1251,6 +1250,21 @@ button:disabled {
   opacity: 0.55;
 }
 
+.game-shell:fullscreen {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-width: none;
+  margin: 0;
+  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+@media (max-width: 699px) {
+  .game-ui__fullscreen { display: grid; }
+}
+
 @media (max-width: 380px) {
   .game-shell { padding-inline: 2px; }
   .game-board { padding: 1px; border-width: 1px; border-radius: 14px; }
@@ -1259,6 +1273,8 @@ button:disabled {
   .game-ui__icon { width: 19px; height: 19px; }
   .game-ui__label { font-size: 9px; }
   .game-ui__value { font-size: 13px; }
+  .game-title { padding-inline: 8px; font-size: 18px; }
+  .game-phase-hint strong { display: none; }
 }
 
 @media (min-width: 700px) {

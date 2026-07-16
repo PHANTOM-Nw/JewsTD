@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useGameEngine } from '../engine/useGameEngine'
 import { GameCanvas } from './GameCanvas'
 import { GameUI } from './GameUI'
@@ -19,6 +19,7 @@ import { MAP_CONFIG } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
 import { getBoardCellOverlayStyle } from './boardOverlay'
 import { screenPointToGrid } from './canvasPointer'
+import { useElementFullscreen } from './fullscreen'
 import './TowerDefenseGame.css'
 
 interface ActiveTileDrag {
@@ -32,6 +33,8 @@ interface PendingAttachmentTarget {
 }
 
 export const TowerDefenseGame: React.FC = () => {
+  const gameShellRef = useRef<HTMLDivElement>(null)
+  const fullscreen = useElementFullscreen(gameShellRef)
   const {
     uiState,
     gameStateRef,
@@ -250,18 +253,27 @@ export const TowerDefenseGame: React.FC = () => {
   }
 
   return (
-    <div className="game-shell">
-      <GameUI uiState={uiState} onResetGame={handleResetGame} />
-
-      <div className="game-main">
-        <div className="game-board">
-          <GameCanvas onClick={handleCanvasClick} onPlacementPreviewEnd={clearPlacementPreview} />
-
+    <div className="game-shell" ref={gameShellRef}>
+      <GameUI
+        uiState={uiState}
+        onResetGame={handleResetGame}
+        phaseHint={(
           <GamePhaseHint
             placedCount={currentBatchTowers.length}
             gameStatus={uiState.gameStatus}
             canGambleForHonor={uiState.canGambleForHonor}
           />
+        )}
+        fullscreen={{
+          isSupported: fullscreen.isSupported,
+          isFullscreen: fullscreen.isFullscreen,
+          onToggle: fullscreen.toggleFullscreen
+        }}
+      />
+
+      <div className="game-main">
+        <div className="game-board">
+          <GameCanvas onClick={handleCanvasClick} onPlacementPreviewEnd={clearPlacementPreview} />
 
           <WaveCompletionNotice gameStatus={uiState.gameStatus} currentWave={uiState.wave} />
 

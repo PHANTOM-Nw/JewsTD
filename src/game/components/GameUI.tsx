@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import {
   ArrowCounterClockwiseIcon,
   CoinsIcon,
+  CornersInIcon,
+  CornersOutIcon,
   HammerIcon,
   HeartIcon,
   StackIcon,
@@ -18,6 +20,12 @@ import type { UIState } from '../types/game'
 interface GameUIProps {
   uiState: UIState
   onResetGame: () => void
+  phaseHint?: ReactNode
+  fullscreen?: {
+    isSupported: boolean
+    isFullscreen: boolean
+    onToggle: () => void
+  }
 }
 
 interface ResourceCardProps {
@@ -43,7 +51,9 @@ function ResourceCard({ className, label, value, icon, action }: ResourceCardPro
 
 export function GameUI({
   uiState,
-  onResetGame
+  onResetGame,
+  phaseHint,
+  fullscreen
 }: GameUIProps) {
   const [soundEnabled, setSoundEnabled] = useState(true)
 
@@ -57,7 +67,21 @@ export function GameUI({
     <header className="game-ui" aria-label="游戏资源与快捷操作">
       <div className="game-header">
         <h1 className="game-title">麻将TD</h1>
+        {phaseHint}
         <div className="game-ui__utilities" aria-label="快捷操作">
+          {fullscreen?.isSupported && (
+            <button
+              type="button"
+              className="icon-button game-ui__fullscreen"
+              onClick={fullscreen.onToggle}
+              aria-label={fullscreen.isFullscreen ? '退出全屏' : '进入全屏'}
+              title={fullscreen.isFullscreen ? '退出全屏' : '进入全屏'}
+            >
+              {fullscreen.isFullscreen
+                ? <CornersInIcon weight="bold" />
+                : <CornersOutIcon weight="bold" />}
+            </button>
+          )}
           <button
             type="button"
             className="icon-button"
