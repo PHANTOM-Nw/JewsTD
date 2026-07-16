@@ -6,6 +6,7 @@ import {
 } from '@phosphor-icons/react'
 import {
   getMahjongTileName,
+  MAHJONG_FORMATION_TILE_COUNTS,
   MAHJONG_HONOR_LABELS
 } from '../config/mahjong'
 import {
@@ -45,7 +46,6 @@ interface MahjongSynthesisDialogProps {
     chowStart?: MahjongRank
     materialTowerIds?: string[]
     wallPosition?: { row: number; col: number }
-    useWhite?: boolean
   }
   onConfirm: (request: MahjongSynthesisSubmitRequest) => MahjongSynthesisSubmitResult
   onClose: () => void
@@ -67,9 +67,9 @@ const FAILURE_MESSAGES: Record<MahjongSynthesisFailure, string> = {
   too_many_walls: '一次吃或碰最多使用一张普通牌墙。',
   invalid_wall: '纯墙体不能作为牌面材料。',
   wall_not_allowed: '对子和杠不能使用牌墙。',
-  too_many_white: '一次合成最多使用一张白。',
+  too_many_white: '白板不能占满所有牌位。',
   white_unavailable: '功能牌区没有可用的白。',
-  white_not_allowed: '白只能用于吃或碰。',
+  white_not_allowed: '白板只能用于吃、碰或杠。',
   invalid_material_count: '请继续选择配方需要的具体材料。',
   invalid_face: '所选材料的花色或点数不符合配方。',
   invalid_chow: '吃必须选择同花色连续三点。',
@@ -148,7 +148,6 @@ export function MahjongSynthesisDialog({
       ? positionKey(initialSelection.wallPosition)
       : null
   )
-  const [useWhite, setUseWhite] = useState(initialSelection?.useWhite ?? false)
   const [submissionMessage, setSubmissionMessage] = useState('')
   const { dialogRef, closeButtonRef } = useDialogFocus(onClose)
 
@@ -170,8 +169,19 @@ export function MahjongSynthesisDialog({
   const materialWalls = walls.filter(wall => availableWallKeys.has(positionKey(wall)))
   const selectedTowers = materialTowers.filter(tower => selectedTowerIds.includes(tower.id))
   const selectedWall = materialWalls.find(wall => positionKey(wall) === selectedWallKey)
-  const canUseWhite = currentOptions.some(option => option.useWhite)
-  const selectedUseWhite = useWhite && canUseWhite
+  // 白数由缺口自动推导：锚点恒为真实塔，白只补齐剩余的空缺牌位。
+  const anchorLogicalTileCount = anchorTower.mahjongState
+    ? MAHJONG_FORMATION_TILE_COUNTS[anchorTower.mahjongState.formation]
+    : 0
+  const selectedLogicalTileCount = selectedTowers.reduce((count, tower) => (
+    count + (tower.mahjongState
+      ? MAHJONG_FORMATION_TILE_COUNTS[tower.mahjongState.formation]
+      : 0)
+  ), 0)
+  const whiteCount = Math.max(0, MAHJONG_FORMATION_TILE_COUNTS[formation]
+    - anchorLogicalTileCount
+    - selectedLogicalTileCount
+    - (selectedWall ? 1 : 0))
 
   const preview = useMemo(() => planMahjongSynthesis({
     gameStatus,
@@ -181,7 +191,7 @@ export function MahjongSynthesisDialog({
       ...(selectedWall ? [{ kind: 'wall' as const, wall: selectedWall }] : [])
     ],
     recipe,
-    whiteCount: selectedUseWhite ? 1 : 0,
+    whiteCount,
     availableWhiteCount
   }), [
     anchorTower,
@@ -190,14 +200,13 @@ export function MahjongSynthesisDialog({
     recipe,
     selectedTowers,
     selectedWall,
-    selectedUseWhite
+    whiteCount
   ])
 
   const chooseFormation = (nextFormation: TargetFormation) => {
     setFormation(nextFormation)
     setSelectedTowerIds([])
     setSelectedWallKey(null)
-    setUseWhite(false)
     setSubmissionMessage('')
   }
 
@@ -205,7 +214,6 @@ export function MahjongSynthesisDialog({
     setChowStart(nextStart)
     setSelectedTowerIds([])
     setSelectedWallKey(null)
-    setUseWhite(false)
     setSubmissionMessage('')
   }
 
@@ -235,7 +243,7 @@ export function MahjongSynthesisDialog({
         ? [{ row: selectedWall.row, col: selectedWall.col }]
         : [],
       recipe,
-      useWhite: selectedUseWhite
+      whiteCount
     }, onConfirm, onClose)
     if (!result.ok) setSubmissionMessage(FAILURE_MESSAGES[result.reason])
   }
@@ -372,19 +380,14 @@ export function MahjongSynthesisDialog({
           </section>
         )}
 
-        {canUseWhite && (
-          <label className="mahjong-synthesis__white">
-            <input
-              type="checkbox"
-              checked={selectedUseWhite}
-              onChange={event => setUseWhite(event.currentTarget.checked)}
-            />
+        {whiteCount > 0 && preview.ok && (
+          <div className="mahjong-synthesis__white" role="status">
             <MahjongTile honor="white" compact />
             <span>
-              使用 1 张白替代缺牌
+              本次将使用 {whiteCount} 张白板替代缺失牌位
               <small>功能牌区现有 {availableWhiteCount} 张；确认成功后才消耗</small>
             </span>
-          </label>
+          </div>
         )}
 
         <section className="mahjong-synthesis__preview" aria-labelledby="synthesis-preview-title">
@@ -394,8 +397,20 @@ export function MahjongSynthesisDialog({
             const stats = getMahjongStateFinalStats(resultState)
             const abilitySummary = getMahjongAbilitySummary(resultState)
             const pairHint = getMahjongPairRouteHint(resultState)
+            const whiteSlots = new Set(resultState.whiteSlotIndices ?? [])
             return (
               <div>
+                <div className="mahjong-synthesis__preview-tiles">
+                  {resultState.ranks.map((rank, index) => (
+                    whiteSlots.has(index)
+                      ? <MahjongTile key={`slot-${index}-${rank}`} honor="white" compact />
+                      : <MahjongTile
+                          key={`slot-${index}-${rank}`}
+                          tile={{ suit: resultState.suit, rank }}
+                          compact
+                        />
+                  ))}
+                </div>
                 <strong>{FORMATION_LABELS[resultState.formation as TargetFormation]}</strong>
                 <span>伤害 {stats.damage.toFixed(1)}</span>
                 <span>攻击间隔 {stats.attackIntervalMs.toFixed(0)}ms</span>

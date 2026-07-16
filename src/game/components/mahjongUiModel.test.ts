@@ -169,7 +169,7 @@ describe('mahjong final UI presentation', () => {
       '忽略护甲25%'
     ])
     expect(getMahjongPairRouteHint(state)).toBe(
-      '听碰：缺1张三萬（主动单牌、同牌牌墙或白）；听杠：缺2张主动三萬，或1组相同对子。'
+      '听碰：缺1张三萬（主动单牌、同牌牌墙或白板）；听杠：缺2张主动三萬、1组相同对子，或用白板补足缺口。'
     )
 
     const tower = createTower(state)
@@ -245,7 +245,7 @@ describe('available Mahjong synthesis options', () => {
       recipe: { formation: 'pair' },
       materialTowerIds: ['mate'],
       wallPosition: null,
-      useWhite: false
+      whiteCount: 0
     })
     expect(getFormations(unavailable)).not.toContain('pair')
   })
@@ -272,7 +272,7 @@ describe('available Mahjong synthesis options', () => {
       recipe: { formation: 'chow', ranks: [3, 4, 5] },
       materialTowerIds: [],
       wallPosition: { row: 2, col: 3 },
-      useWhite: true
+      whiteCount: 1
     })
     expect(getFormations(available)).toContain('chow')
     expect(getFormations(unavailable)).not.toContain('chow')
@@ -310,12 +310,12 @@ describe('available Mahjong synthesis options', () => {
       recipe: { formation: 'pung' },
       materialTowerIds: [],
       wallPosition: { row: 2, col: 4 },
-      useWhite: true
+      whiteCount: 1
     })
     expect(getFormations(unavailable)).not.toContain('pung')
   })
 
-  it('publishes kong for pung plus a matching active single, never a wall or white', () => {
+  it('publishes kong from a matching active single without a wall or white', () => {
     const pung = createSynthesisTower('anchor-pung', 3, 1, 'pung')
     const single = createSynthesisTower('matching-single', 3, 2)
     const available = getAvailableMahjongSynthesisOptions({
@@ -325,16 +325,109 @@ describe('available Mahjong synthesis options', () => {
       walls: [],
       availableWhiteCount: 0
     })
-    const unavailable = getAvailableMahjongSynthesisOptions({
+
+    expect(getFormations(available)).toContain('kong')
+    expect(available).toContainEqual({
+      recipe: { formation: 'kong' },
+      materialTowerIds: ['matching-single'],
+      wallPosition: null,
+      whiteCount: 0
+    })
+  })
+
+  it('fills kong routes with white across anchor shapes but never absorbs a wall', () => {
+    const pungAnchor = createSynthesisTower('anchor-pung', 3, 1, 'pung')
+    // 明刻锚（3 张）+ 1 白 → 杠；同点牌墙在场也绝不被杠吸收。
+    const pungWhite = getAvailableMahjongSynthesisOptions({
       gameStatus: 'ready',
-      anchorTower: pung,
-      fieldTowers: [pung],
+      anchorTower: pungAnchor,
+      fieldTowers: [pungAnchor],
       walls: [createSynthesisWall(3, 3)],
       availableWhiteCount: 1
     })
+    const pungKong = pungWhite.filter(option => option.recipe.formation === 'kong')
+    expect(pungKong).toContainEqual({
+      recipe: { formation: 'kong' },
+      materialTowerIds: [],
+      wallPosition: null,
+      whiteCount: 1
+    })
+    expect(pungKong.every(option => option.wallPosition === null)).toBe(true)
 
-    expect(getFormations(available)).toContain('kong')
-    expect(getFormations(unavailable)).not.toContain('kong')
+    // 对子锚（2 张）+ 2 白 → 杠。
+    const pairAnchor = createSynthesisTower('anchor-pair', 3, 1, 'pair')
+    const pairWhite = getAvailableMahjongSynthesisOptions({
+      gameStatus: 'ready',
+      anchorTower: pairAnchor,
+      fieldTowers: [pairAnchor],
+      walls: [],
+      availableWhiteCount: 2
+    })
+    expect(pairWhite.filter(option => option.recipe.formation === 'kong')).toContainEqual({
+      recipe: { formation: 'kong' },
+      materialTowerIds: [],
+      wallPosition: null,
+      whiteCount: 2
+    })
+
+    // 单牌锚（1 张）+ 3 白 → 杠；库存不足 3 张时该路线消失。
+    const singleAnchor = createSynthesisTower('anchor-single', 3, 1)
+    const singleWhite = getAvailableMahjongSynthesisOptions({
+      gameStatus: 'ready',
+      anchorTower: singleAnchor,
+      fieldTowers: [singleAnchor],
+      walls: [],
+      availableWhiteCount: 3
+    })
+    expect(singleWhite.filter(option => option.recipe.formation === 'kong')).toContainEqual({
+      recipe: { formation: 'kong' },
+      materialTowerIds: [],
+      wallPosition: null,
+      whiteCount: 3
+    })
+    const singleScarce = getAvailableMahjongSynthesisOptions({
+      gameStatus: 'ready',
+      anchorTower: singleAnchor,
+      fieldTowers: [singleAnchor],
+      walls: [],
+      availableWhiteCount: 2
+    })
+    expect(getFormations(singleScarce)).not.toContain('kong')
+  })
+
+  it('enumerates multi-white chow and pung options only within the white stock', () => {
+    const anchor = createSynthesisTower('anchor', 3, 1)
+    const stocked = getAvailableMahjongSynthesisOptions({
+      gameStatus: 'ready',
+      anchorTower: anchor,
+      fieldTowers: [anchor],
+      walls: [],
+      availableWhiteCount: 2
+    })
+    // 单牌锚 + 2 白凑碰（排尾白位）。
+    expect(stocked).toContainEqual({
+      recipe: { formation: 'pung' },
+      materialTowerIds: [],
+      wallPosition: null,
+      whiteCount: 2
+    })
+    // 单牌锚 + 2 白凑吃，白补齐缺口点位。
+    expect(stocked).toContainEqual({
+      recipe: { formation: 'chow', ranks: [3, 4, 5] },
+      materialTowerIds: [],
+      wallPosition: null,
+      whiteCount: 2
+    })
+
+    const scarce = getAvailableMahjongSynthesisOptions({
+      gameStatus: 'ready',
+      anchorTower: anchor,
+      fieldTowers: [anchor],
+      walls: [],
+      availableWhiteCount: 1
+    })
+    expect(getFormations(scarce)).not.toContain('pung')
+    expect(getFormations(scarce)).not.toContain('chow')
   })
 })
 
@@ -423,13 +516,16 @@ describe('mahjong honor attachment preview', () => {
 })
 
 describe('mahjong white catalyst description', () => {
-  it('describes 白 as a catalyst without any attachment-capacity copy', () => {
+  it('describes 白 as a stock-limited catalyst for 吃碰杠 without capacity copy', () => {
     const white = getMahjongWhiteCatalystDescription()
+    const joined = white.effects.join('\n')
 
     expect(white.title).toBe(MAHJONG_HONOR_LABELS.white)
-    expect(white.effects.join('\n')).toContain(
-      `${MAHJONG_WHITE_CATALYST_CONFIG.maxPerSynthesis} 张`
-    )
+    // 允许形态由配置派生，现已含杠。
+    expect(MAHJONG_WHITE_CATALYST_CONFIG.allowedFormations).toContain('kong')
+    expect(joined).toContain('杠')
+    expect(joined).toContain('任意数量')
+    expect(joined).toContain('白板库存')
     // 催化不占附着容量：白说明不复用容量文案。
     expect(white.usageNote).not.toContain('附着位')
   })

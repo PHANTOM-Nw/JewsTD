@@ -233,7 +233,7 @@ describe('applySynthesizeMahjongAction', () => {
       anchorTowerId: anchor.id,
       materialTowerIds: [material.id],
       recipe: { formation: 'pung' },
-      useWhite: true
+      whiteCount: 1
     })
 
     expect(result.ok).toBe(true)
@@ -243,9 +243,33 @@ describe('applySynthesizeMahjongAction', () => {
       formation: 'pung',
       ranks: [4, 4, 4],
       containedTileIds: ['anchor-tile', 'material-tile'],
-      usesWhiteSubstitution: true
+      whiteSlotIndices: [2]
     })
     expect(state.functionTiles).toEqual(['white', 'red'])
+  })
+
+  it('consumes every requested white after a multi-white pung', () => {
+    const anchor = createTower('anchor', 'bamboo', 4, 1)
+    const state = createState([anchor], {
+      functionTiles: ['white', 'white', 'red']
+    })
+
+    const result = applySynthesizeMahjongAction(state, 'ready', {
+      anchorTowerId: anchor.id,
+      recipe: { formation: 'pung' },
+      whiteCount: 2
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.state.functionTiles).toEqual(['red'])
+    expect(result.state.towers[0].mahjongState).toMatchObject({
+      formation: 'pung',
+      ranks: [4, 4, 4],
+      containedTileIds: ['anchor-tile'],
+      whiteSlotIndices: [1, 2]
+    })
+    expect(state.functionTiles).toEqual(['white', 'white', 'red'])
   })
 
   it('rejects temporary towers without mutating any resource', () => {
@@ -260,7 +284,7 @@ describe('applySynthesizeMahjongAction', () => {
       anchorTowerId: anchor.id,
       materialTowerIds: [temporary.id],
       recipe: { formation: 'pung' },
-      useWhite: true
+      whiteCount: 1
     })
 
     expect(result).toEqual({
@@ -541,7 +565,7 @@ describe('production Mahjong ownership orchestration', () => {
       anchorTowerId: placedTowers[0].id,
       wallPositions: [{ row: 1, col: 3 }],
       recipe: { formation: 'chow', ranks: [1, 2, 3] },
-      useWhite: true
+      whiteCount: 1
     })
     expect(failedSynthesis.ok).toBe(false)
     expect(failedSynthesis.state).toBe(state)
@@ -559,7 +583,7 @@ describe('production Mahjong ownership orchestration', () => {
       anchorTowerId: placedTowers[0].id,
       wallPositions: [{ row: 1, col: 2 }],
       recipe: { formation: 'chow', ranks: [1, 2, 3] },
-      useWhite: true
+      whiteCount: 1
     })
     expect(synthesized.ok).toBe(true)
     if (!synthesized.ok) return
@@ -568,7 +592,7 @@ describe('production Mahjong ownership orchestration', () => {
       formation: 'chow',
       containedTileIds: [anchorResource.tile.id, chowWallResource.tile.id],
       activeSources: [{ tileId: anchorResource.tile.id }],
-      usesWhiteSubstitution: true
+      whiteSlotIndices: [2]
     })
     expect(state.grid[1][2]).toEqual({
       row: 1,
@@ -624,6 +648,56 @@ describe('production Mahjong ownership orchestration', () => {
     roundTiles = nextRound.roundTiles
     const finalAudit = expectConserved(universe, state, roundTiles, heldTile)
     expect(finalAudit).toMatchObject({
+      expectedEntityCount: 108,
+      ownedEntityCount: 108,
+      duplicates: [],
+      missing: [],
+      unknown: [],
+      conserved: true
+    })
+  })
+
+  it('conserves 108 entities through a multi-white pung synthesis', () => {
+    let tileSequence = 0
+    const universe = createMahjongTilePool(() => `entity-${tileSequence++}`)
+    const firstRound = beginMahjongRound(universe, null, () => 0)
+    const anchorResource = firstRound.roundTiles[0]
+    const stats = createMahjongRandomStats(anchorResource.tile.suit, () => 0)
+    const anchorTower = createTowerFromTile(
+      'placed-anchor',
+      anchorResource.tile,
+      1,
+      stats.damage
+    )
+    anchorTower.mahjongState = createSingleMahjongTowerState(anchorResource.tile, stats)
+    const roundTiles = firstRound.roundTiles.filter(resource => (
+      resource.id !== anchorResource.id
+    ))
+    let state = createState([anchorTower], {
+      storedTowerIds: ['placed-anchor'],
+      pool: firstRound.pool,
+      functionTiles: ['white', 'white'],
+      gold: 250
+    })
+    expectConserved(universe, state, roundTiles, null)
+
+    const synthesized = applySynthesizeMahjongAction(state, 'ready', {
+      anchorTowerId: 'placed-anchor',
+      recipe: { formation: 'pung' },
+      whiteCount: 2
+    })
+    expect(synthesized.ok).toBe(true)
+    if (!synthesized.ok) return
+    state = synthesized.state
+    expect(state.functionTiles).toEqual([])
+    expect(state.towers[0].mahjongState).toMatchObject({
+      formation: 'pung',
+      containedTileIds: [anchorResource.tile.id],
+      whiteSlotIndices: [1, 2]
+    })
+
+    const audit = expectConserved(universe, state, roundTiles, null)
+    expect(audit).toMatchObject({
       expectedEntityCount: 108,
       ownedEntityCount: 108,
       duplicates: [],

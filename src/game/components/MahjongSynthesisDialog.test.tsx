@@ -115,7 +115,7 @@ describe('MahjongSynthesisDialog', () => {
     expect(markup).toContain('选择牌墙材料三萬')
     expect(markup).not.toContain('选择主动材料六萬')
     expect(markup).not.toContain('选择牌墙材料六萬')
-    expect(markup).toContain('使用 1 张白替代缺牌')
+    expect(markup).not.toContain('type="checkbox"')
     expect(markup).not.toContain('纯墙体')
     expect(markup).toContain('产物固定保留在这里')
     expect(markup).toContain('aria-live="polite"')
@@ -155,7 +155,7 @@ describe('MahjongSynthesisDialog', () => {
     expect(markup).not.toContain('disabled="" class="synthesis-dialog__confirm"')
   })
 
-  it('allows white only as a chow or pung material and describes deferred consumption', () => {
+  it('auto-derives white to fill a chow gap and previews the white face', () => {
     const anchor = createTower('anchor', 'characters', 3, 1)
     const wall = tileWall(4, 3)
     const markup = renderToStaticMarkup(
@@ -168,22 +168,78 @@ describe('MahjongSynthesisDialog', () => {
         initialSelection={{
           formation: 'chow',
           chowStart: 3,
-          wallPosition: wall,
-          useWhite: true
+          wallPosition: wall
         }}
         onConfirm={vi.fn(() => ({ ok: true as const, towerId: anchor.id }))}
         onClose={vi.fn()}
       />
     )
 
-    expect(markup).toContain('使用 1 张白替代缺牌')
+    // 复选框已移除，改为按缺口自动推导的只读展示。
+    expect(markup).not.toContain('type="checkbox"')
+    expect(markup).not.toContain('使用 1 张白替代缺牌')
+    expect(markup).toContain('本次将使用 1 张白板替代缺失牌位')
+    expect(markup).toContain('功能牌区现有 1 张')
     expect(markup).toContain('确认成功后才消耗')
-    expect(markup).toContain('checked=""')
     expect(markup).toContain('吃（顺子）')
     expect(markup).toContain('变为纯墙：3行4列')
     expect(markup).toContain('顺子3发，最多3个目标，总伤害按实际目标数均分')
     expect(markup).toContain('暴击25%，暴伤×2')
     expect(markup).toContain('中：总伤害×1.25')
+    // 缺口牌位在产物预览区画白板脸（空心蓝描边矩形，与 MahjongTile honor="white" 一致）。
+    const preview = markup.slice(markup.indexOf('产物预览'))
+    expect(preview).toContain('width="24" height="38"')
+  })
+
+  it('auto-derives white for a pung and describes the read-only stock line', () => {
+    const anchor = createTower('anchor', 'characters', 3, 1)
+    const markup = renderToStaticMarkup(
+      <MahjongSynthesisDialog
+        gameStatus="ready"
+        anchorTower={anchor}
+        fieldTowers={[anchor]}
+        walls={[]}
+        availableWhiteCount={2}
+        initialSelection={{ formation: 'pung' }}
+        onConfirm={vi.fn(() => ({ ok: true as const, towerId: anchor.id }))}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('碰（明刻）')
+    expect(markup).not.toContain('type="checkbox"')
+    // 单牌锚补 2 张白凑碰。
+    expect(markup).toContain('本次将使用 2 张白板替代缺失牌位')
+    expect(markup).toContain('功能牌区现有 2 张')
+    // 两个排尾白位在产物预览区都画白板脸。
+    const preview = markup.slice(markup.indexOf('产物预览'))
+    expect(preview.split('width="24" height="38"').length - 1).toBe(2)
+  })
+
+  it('fills a kong with white and never offers a wall for it', () => {
+    const pungAnchor = createTower('anchor', 'characters', 3, 1, { formation: 'pung' })
+    const markup = renderToStaticMarkup(
+      <MahjongSynthesisDialog
+        gameStatus="ready"
+        anchorTower={pungAnchor}
+        fieldTowers={[pungAnchor]}
+        walls={[tileWall(3, 5)]}
+        availableWhiteCount={1}
+        initialSelection={{ formation: 'kong' }}
+        onConfirm={vi.fn(() => ({ ok: true as const, towerId: pungAnchor.id }))}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('杠')
+    expect(markup).toContain('本次将使用 1 张白板替代缺失牌位')
+    expect(markup).toContain('功能牌区现有 1 张')
+    // 杠不吸墙：即便场上有同点牌墙也不出现牌墙材料区。
+    expect(markup).not.toContain('选择具体普通牌墙')
+    expect(markup).not.toContain('type="checkbox"')
+    // 杠的排尾白位在产物预览区画白板脸。
+    const preview = markup.slice(markup.indexOf('产物预览'))
+    expect(preview).toContain('width="24" height="38"')
   })
 
   it('previews kong poison and both inherited 中發 effects', () => {
@@ -221,7 +277,7 @@ describe('MahjongSynthesisDialog', () => {
       materialTowerIds: ['mate'],
       wallPositions: [],
       recipe: { formation: 'pair' },
-      useWhite: false
+      whiteCount: 0
     }
     const close = vi.fn()
     const confirm = vi.fn(() => ({ ok: true as const, towerId: 'anchor' }))

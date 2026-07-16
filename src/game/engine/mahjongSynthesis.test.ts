@@ -41,7 +41,7 @@ function createTower(
     ranks?: MahjongRank[]
     activeSourceCount?: number
     attachments?: MahjongAttachment[]
-    usesWhiteSubstitution?: boolean
+    whiteSlotIndices?: readonly number[]
   } = {}
 ): MahjongSynthesisTower {
   const formation = options.formation ?? 'single'
@@ -49,7 +49,8 @@ function createTower(
     { length: FORMATION_RANK_COUNT[formation] },
     () => rank
   )
-  const containedCount = ranks.length - (options.usesWhiteSubstitution ? 1 : 0)
+  const whiteCount = options.whiteSlotIndices?.length ?? 0
+  const containedCount = ranks.length - whiteCount
   const containedTileIds = Array.from(
     { length: containedCount },
     (_, index) => `${id}-tile-${index}`
@@ -69,7 +70,7 @@ function createTower(
       }
     })),
     attachments: [...(options.attachments ?? [])],
-    ...(options.usesWhiteSubstitution ? { usesWhiteSubstitution: true } : {})
+    ...(options.whiteSlotIndices ? { whiteSlotIndices: options.whiteSlotIndices } : {})
   }
 
   return {
@@ -230,10 +231,30 @@ describe('mahjong chow synthesis', () => {
     expect(result.plan.resultState).toMatchObject({
       ranks: [3, 4, 5],
       containedTileIds: ['three-tile-0', 'wall-five'],
-      usesWhiteSubstitution: true
+      whiteSlotIndices: [1]
     })
     expect(result.plan.resultState.activeSources).toHaveLength(1)
     expect(result.plan.consumedWhiteCount).toBe(1)
+  })
+
+  it('fills every uncovered chow gap with white at the missing rank slots', () => {
+    const result = planMahjongSynthesis({
+      gameStatus: 'building',
+      anchor: createTower('three', 'bamboo', 3, 1),
+      materials: [],
+      recipe: { formation: 'chow', ranks: [3, 4, 5] },
+      whiteCount: 2,
+      availableWhiteCount: 2
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.resultState).toMatchObject({
+      ranks: [3, 4, 5],
+      containedTileIds: ['three-tile-0'],
+      whiteSlotIndices: [1, 2]
+    })
+    expect(result.plan.consumedWhiteCount).toBe(2)
   })
 })
 
@@ -301,7 +322,27 @@ describe('mahjong pung synthesis', () => {
     if (!result.ok) return
     expect(result.plan.resultState.formation).toBe('pung')
     expect(result.plan.resultState.ranks).toEqual([7, 7, 7])
-    expect(result.plan.resultState.usesWhiteSubstitution).toBe(whiteCount ? true : undefined)
+    expect(result.plan.resultState.whiteSlotIndices).toEqual(whiteCount ? [2] : undefined)
+  })
+
+  it('fills two pung slots with white at the deterministic tail', () => {
+    const result = planMahjongSynthesis({
+      gameStatus: 'building',
+      anchor: createTower('a', 'characters', 7, 1),
+      materials: [],
+      recipe: { formation: 'pung' },
+      whiteCount: 2,
+      availableWhiteCount: 2
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.resultState).toMatchObject({
+      ranks: [7, 7, 7],
+      containedTileIds: ['a-tile-0'],
+      whiteSlotIndices: [1, 2]
+    })
+    expect(result.plan.consumedWhiteCount).toBe(2)
   })
 
   it('preserves both attachment kinds and only active source stats', () => {
@@ -378,7 +419,7 @@ describe('mahjong kong synthesis', () => {
       gameStatus: 'ready',
       anchor: createTower('pung', 'bamboo', 6, 1, {
         formation: 'pung',
-        usesWhiteSubstitution: true
+        whiteSlotIndices: [2]
       }),
       materials: [towerMaterial(createTower('single', 'bamboo', 6, 4))],
       recipe: { formation: 'kong' }
@@ -388,8 +429,91 @@ describe('mahjong kong synthesis', () => {
     if (!result.ok) return
     expect(result.plan.resultState).toMatchObject({
       containedTileIds: ['pung-tile-0', 'pung-tile-1', 'single-tile-0'],
-      usesWhiteSubstitution: true
+      whiteSlotIndices: [3]
     })
+  })
+
+  it('accumulates white when a white-backed pung is topped up with another white', () => {
+    const result = planMahjongSynthesis({
+      gameStatus: 'ready',
+      anchor: createTower('pung', 'bamboo', 6, 1, {
+        formation: 'pung',
+        whiteSlotIndices: [2]
+      }),
+      materials: [],
+      recipe: { formation: 'kong' },
+      whiteCount: 1,
+      availableWhiteCount: 1
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.resultState).toMatchObject({
+      formation: 'kong',
+      containedTileIds: ['pung-tile-0', 'pung-tile-1'],
+      whiteSlotIndices: [2, 3]
+    })
+    expect(result.plan.consumedWhiteCount).toBe(1)
+  })
+
+  it.each([
+    {
+      name: 'a pair and two whites',
+      anchor: createTower('pair', 'dots', 9, 1, { formation: 'pair' }),
+      materials: [] as MahjongSynthesisMaterial[],
+      whiteCount: 2,
+      containedTileIds: ['pair-tile-0', 'pair-tile-1'],
+      whiteSlotIndices: [2, 3]
+    },
+    {
+      name: 'a pung and one white',
+      anchor: createTower('pung', 'dots', 9, 1, { formation: 'pung' }),
+      materials: [] as MahjongSynthesisMaterial[],
+      whiteCount: 1,
+      containedTileIds: ['pung-tile-0', 'pung-tile-1', 'pung-tile-2'],
+      whiteSlotIndices: [3]
+    },
+    {
+      name: 'a single anchor and three whites',
+      anchor: createTower('single', 'dots', 9, 1),
+      materials: [] as MahjongSynthesisMaterial[],
+      whiteCount: 3,
+      containedTileIds: ['single-tile-0'],
+      whiteSlotIndices: [1, 2, 3]
+    },
+    {
+      name: 'a pair, an active single and one white',
+      anchor: createTower('pair', 'dots', 9, 1, { formation: 'pair' }),
+      materials: [towerMaterial(createTower('single', 'dots', 9, 2))],
+      whiteCount: 1,
+      containedTileIds: ['pair-tile-0', 'pair-tile-1', 'single-tile-0'],
+      whiteSlotIndices: [3]
+    }
+  ])('grows a kong from $name', ({
+    anchor,
+    materials,
+    whiteCount,
+    containedTileIds,
+    whiteSlotIndices
+  }) => {
+    const result = planMahjongSynthesis({
+      gameStatus: 'ready',
+      anchor,
+      materials,
+      recipe: { formation: 'kong' },
+      whiteCount,
+      availableWhiteCount: whiteCount
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.resultState).toMatchObject({
+      formation: 'kong',
+      ranks: [9, 9, 9, 9],
+      containedTileIds,
+      whiteSlotIndices
+    })
+    expect(result.plan.consumedWhiteCount).toBe(whiteCount)
   })
 })
 
@@ -456,35 +580,53 @@ describe('mahjong synthesis rejection and atomicity', () => {
     })).toEqual({ ok: false, reason: 'invalid_wall' })
   })
 
-  it.each(['pair', 'kong'] as const)('rejects a wall and white for %s', formation => {
+  it('rejects a wall for a pair and rejects white for a pair', () => {
     const anchor = createTower('a', 'dots', 4, 1)
-    const materials = formation === 'pair'
-      ? [wallMaterial(createWall('wall', 'dots', 4, 4))]
-      : [
-          towerMaterial(createTower('b', 'dots', 4, 2)),
-          towerMaterial(createTower('c', 'dots', 4, 3)),
-          wallMaterial(createWall('wall', 'dots', 4, 4))
-        ]
 
     expect(planMahjongSynthesis({
       gameStatus: 'ready',
       anchor,
-      materials,
-      recipe: { formation }
+      materials: [wallMaterial(createWall('wall', 'dots', 4, 4))],
+      recipe: { formation: 'pair' }
     })).toEqual({ ok: false, reason: 'wall_not_allowed' })
     expect(planMahjongSynthesis({
       gameStatus: 'ready',
       anchor,
-      materials: formation === 'pair'
-        ? [towerMaterial(createTower('b', 'dots', 4, 2))]
-        : [
-            towerMaterial(createTower('b', 'dots', 4, 2)),
-            towerMaterial(createTower('c', 'dots', 4, 3))
-          ],
-      recipe: { formation },
+      materials: [towerMaterial(createTower('b', 'dots', 4, 2))],
+      recipe: { formation: 'pair' },
       whiteCount: 1,
       availableWhiteCount: 1
     })).toEqual({ ok: false, reason: 'white_not_allowed' })
+  })
+
+  it('rejects a wall for a kong but accepts white to complete it', () => {
+    const anchor = createTower('a', 'dots', 4, 1)
+
+    expect(planMahjongSynthesis({
+      gameStatus: 'ready',
+      anchor,
+      materials: [
+        towerMaterial(createTower('b', 'dots', 4, 2)),
+        towerMaterial(createTower('c', 'dots', 4, 3)),
+        wallMaterial(createWall('wall', 'dots', 4, 4))
+      ],
+      recipe: { formation: 'kong' }
+    })).toEqual({ ok: false, reason: 'wall_not_allowed' })
+
+    const accepted = planMahjongSynthesis({
+      gameStatus: 'ready',
+      anchor,
+      materials: [
+        towerMaterial(createTower('b', 'dots', 4, 2)),
+        towerMaterial(createTower('c', 'dots', 4, 3))
+      ],
+      recipe: { formation: 'kong' },
+      whiteCount: 1,
+      availableWhiteCount: 1
+    })
+    expect(accepted.ok).toBe(true)
+    if (!accepted.ok) return
+    expect(accepted.plan.resultState.whiteSlotIndices).toEqual([3])
   })
 
   it('rejects too many or unavailable white tiles', () => {
@@ -494,10 +636,19 @@ describe('mahjong synthesis rejection and atomicity', () => {
       materials: [towerMaterial(createTower('b', 'characters', 2, 2))],
       recipe: { formation: 'chow' as const, ranks: [1, 2, 3] as const }
     }
+    // A full-white chow (all three logical tiles) can never keep a real anchor.
     expect(planMahjongSynthesis({
       ...baseRequest,
-      whiteCount: 2,
-      availableWhiteCount: 2
+      whiteCount: 3,
+      availableWhiteCount: 3
+    })).toEqual({ ok: false, reason: 'too_many_white' })
+    expect(planMahjongSynthesis({
+      gameStatus: 'ready',
+      anchor: createTower('a', 'dots', 4, 1),
+      materials: [],
+      recipe: { formation: 'kong' },
+      whiteCount: 4,
+      availableWhiteCount: 4
     })).toEqual({ ok: false, reason: 'too_many_white' })
     expect(planMahjongSynthesis({
       ...baseRequest,
@@ -509,6 +660,43 @@ describe('mahjong synthesis rejection and atomicity', () => {
       whiteCount: 1,
       availableWhiteCount: Number.NaN
     })).toEqual({ ok: false, reason: 'white_unavailable' })
+  })
+
+  it('rejects white slot indices that are out of range, duplicated or on a non-composite tower', () => {
+    const single = () => towerMaterial(createTower('single', 'dots', 5, 2))
+
+    const outOfRange = createTower('out', 'dots', 5, 1, {
+      formation: 'pung',
+      whiteSlotIndices: [3]
+    })
+    expect(planMahjongSynthesis({
+      gameStatus: 'ready',
+      anchor: outOfRange,
+      materials: [single()],
+      recipe: { formation: 'kong' }
+    })).toEqual({ ok: false, reason: 'invalid_anchor' })
+
+    const duplicated = createTower('dup', 'dots', 5, 1, {
+      formation: 'pung',
+      whiteSlotIndices: [2, 2]
+    })
+    expect(planMahjongSynthesis({
+      gameStatus: 'ready',
+      anchor: duplicated,
+      materials: [single()],
+      recipe: { formation: 'kong' }
+    })).toEqual({ ok: false, reason: 'invalid_anchor' })
+
+    const wrongFormation = createTower('pair', 'dots', 5, 1, {
+      formation: 'pair',
+      whiteSlotIndices: [1]
+    })
+    expect(planMahjongSynthesis({
+      gameStatus: 'ready',
+      anchor: wrongFormation,
+      materials: [single()],
+      recipe: { formation: 'pung' }
+    })).toEqual({ ok: false, reason: 'invalid_anchor' })
   })
 
   it('rejects missing Mahjong identity and unusable active source stats', () => {
@@ -545,7 +733,7 @@ describe('mahjong synthesis rejection and atomicity', () => {
 
     const whitePair = createTower('white-pair', 'dots', 6, 1, {
       formation: 'pair',
-      usesWhiteSubstitution: true
+      whiteSlotIndices: [1]
     })
     expect(planMahjongSynthesis({
       gameStatus: 'ready',

@@ -74,7 +74,7 @@ victory/game_over ──重新开始──> building
 - `containedTileIds`：实际被塔占用的数牌实体。
 - `activeSources`：曾作为主动棋子的实体 ID 与不可变原始随机属性。
 - `attachments`：已经消耗并附着的中或發。
-- `usesWhiteSubstitution`：白替代了一个逻辑牌位；白不进入 108 张实体集合。
+- `whiteSlotIndices`：白替代的牌位下标（与 `ranks` 对齐，长度即白数）；白不进入 108 张实体集合。
 
 网格通过 `mahjongWallKind` 区分两种墙：
 

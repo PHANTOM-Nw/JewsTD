@@ -14,6 +14,7 @@ import type {
 import { calculateMahjongFormationStats } from './mahjongStats'
 import { canFinalizeTowerBatch } from './gameFlow'
 import {
+  getWhiteCount,
   planMahjongSynthesis,
   type MahjongGridPosition,
   type MahjongSynthesisFailure,
@@ -40,7 +41,7 @@ export interface SynthesizeMahjongRequest {
   materialTowerIds?: string[]
   wallPositions?: MahjongGridPosition[]
   recipe: MahjongSynthesisRecipe
-  useWhite?: boolean
+  whiteCount?: number
 }
 
 export type SynthesizeMahjongActionResult =
@@ -112,7 +113,7 @@ function isValidTemporarySingle(state: MahjongEngineActionState, tower: Tower): 
     && mahjong.containedTileIds[0] === tile?.id
     && mahjong.activeSources.length === 1
     && mahjong.activeSources[0].tileId === tile?.id
-    && mahjong.usesWhiteSubstitution !== true
+    && getWhiteCount(mahjong) === 0
 }
 
 /** Atomically keeps one placed single and converts the other batch tiles to walls. */
@@ -201,7 +202,7 @@ export function applySynthesizeMahjongAction(
     materials.push({ kind: 'wall', wall })
   }
 
-  const whiteCount = request.useWhite ? 1 : 0
+  const whiteCount = request.whiteCount ?? 0
   const result = planMahjongSynthesis({
     gameStatus,
     anchor,
@@ -243,8 +244,9 @@ export function applySynthesizeMahjongAction(
     }
   })
   const nextFunctionTiles = [...state.functionTiles]
-  if (plan.consumedWhiteCount > 0) {
+  for (let consumed = 0; consumed < plan.consumedWhiteCount; consumed += 1) {
     const whiteIndex = nextFunctionTiles.indexOf('white')
+    if (whiteIndex === -1) break
     nextFunctionTiles.splice(whiteIndex, 1)
   }
   const nextState: MahjongEngineActionState = {

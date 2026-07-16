@@ -65,8 +65,9 @@ export interface MahjongActiveSource {
 
 /**
  * Mahjong-specific state carried by a single tile or a composite tower.
- * `containedTileIds` tracks physical number tiles; a white catalyst is represented
- * by `usesWhiteSubstitution` and never enters the 108-tile entity set.
+ * `containedTileIds` tracks physical number tiles; white catalysts are represented
+ * by `whiteSlotIndices` (the rank positions they fill) and never enter the
+ * 108-tile entity set.
  */
 export interface MahjongTowerState {
   formation: MahjongFormation
@@ -75,7 +76,12 @@ export interface MahjongTowerState {
   containedTileIds: MahjongTileId[]
   activeSources: MahjongActiveSource[]
   attachments: MahjongAttachment[]
-  usesWhiteSubstitution?: boolean
+  /**
+   * Ascending, de-duplicated rank-slot indices (aligned with `ranks`) that a white
+   * catalyst fills. Its length is the white count and is always < the formation
+   * size, so `containedTileIds.length === ranks.length − whiteSlotIndices.length`.
+   */
+  whiteSlotIndices?: readonly number[]
 }
 
 /** 108 张实体数牌中的一张；copy 用于区分同牌面的四个实体。 */

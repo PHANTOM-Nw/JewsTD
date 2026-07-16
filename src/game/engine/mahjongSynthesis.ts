@@ -75,7 +75,7 @@ export interface MahjongSynthesisPlan {
   consumedTowerIds: string[]
   consumedWallPositions: MahjongGridPosition[]
   pureWallPositions: MahjongGridPosition[]
-  consumedWhiteCount: 0 | 1
+  consumedWhiteCount: number
 }
 
 export type MahjongSynthesisResult =
@@ -130,16 +130,42 @@ function hasValidActiveSources(state: MahjongTowerState): boolean {
   })
 }
 
+/** 白同质无 ID，塔上的白仅由 whiteSlotIndices 记录，其长度即白数。 */
+export function getWhiteCount(
+  state: Pick<MahjongTowerState, 'whiteSlotIndices'>
+): number {
+  return state.whiteSlotIndices?.length ?? 0
+}
+
+/** 白位下标必须升序去重、落在 [0, tileCount) 内，且不能占满所有牌位。 */
+function hasValidWhiteSlotIndices(
+  indices: readonly number[],
+  tileCount: number
+): boolean {
+  if (indices.length >= tileCount) return false
+  return indices.every((index, position) => (
+    Number.isInteger(index)
+      && index >= 0
+      && index < tileCount
+      && (position === 0 || index > indices[position - 1])
+  ))
+}
+
 function hasValidPhysicalSourceCounts(state: MahjongTowerState): boolean {
   const logicalTileCount = MAHJONG_FORMATION_TILE_COUNTS[state.formation]
-  const usesWhite = state.usesWhiteSubstitution === true
-  if (usesWhite && state.formation !== 'chow'
-    && state.formation !== 'pung'
-    && state.formation !== 'kong') {
-    return false
+  const whiteCount = getWhiteCount(state)
+  if (whiteCount > 0) {
+    if (state.formation !== 'chow'
+      && state.formation !== 'pung'
+      && state.formation !== 'kong') {
+      return false
+    }
+    if (!hasValidWhiteSlotIndices(state.whiteSlotIndices!, logicalTileCount)) {
+      return false
+    }
   }
 
-  const expectedContainedCount = logicalTileCount - (usesWhite ? 1 : 0)
+  const expectedContainedCount = logicalTileCount - whiteCount
   if (state.containedTileIds.length !== expectedContainedCount) return false
 
   const passiveTileCount = state.containedTileIds.length - state.activeSources.length
@@ -215,22 +241,17 @@ function hasSameFace(towers: readonly ValidTower[], wall: MahjongSynthesisWall |
   ))
 }
 
+/**
+ * Any combination of real single/pair/pung sources may grow into a kong. Same-face
+ * (hasSameFace) and the four logical tiles (logicalTileCount, which already counts
+ * white) keep the shape balanced, so white simply fills whatever real tiles miss.
+ */
 function isAllowedKongRoute(towers: readonly ValidTower[]): boolean {
-  const formations = towers.map(({ state }) => state.formation).sort()
-  return (
-    formations.length === 4 && formations.every(formation => formation === 'single')
-  ) || (
-    formations.length === 3
-      && formations.filter(formation => formation === 'single').length === 2
-      && formations.includes('pair')
-  ) || (
-    formations.length === 2
-      && formations.every(formation => formation === 'pair')
-  ) || (
-    formations.length === 2
-      && formations.includes('pung')
-      && formations.includes('single')
-  )
+  return towers.every(({ state }) => (
+    state.formation === 'single'
+      || state.formation === 'pair'
+      || state.formation === 'pung'
+  ))
 }
 
 function getResultRanks(
@@ -241,6 +262,42 @@ function getResultRanks(
   return Array.from({
     length: MAHJONG_FORMATION_TILE_COUNTS[recipe.formation]
   }, () => faceRank)
+}
+
+/**
+ * Locates the rank slots a white catalyst fills in the result. Chow marks the gap
+ * ranks no real tile covers; pung/kong use a deterministic tail so real tiles keep
+ * the low positions (and a white pung upgrading to a kong needs no index shuffle).
+ * The accumulated white count sums every source tower's inherited white plus the
+ * whites added this transaction.
+ */
+function getResultWhiteSlotIndices(
+  recipe: MahjongSynthesisRecipe,
+  towers: readonly ValidTower[],
+  wall: MahjongSynthesisWall | null,
+  whiteCount: number
+): number[] {
+  const tileCount = MAHJONG_FORMATION_TILE_COUNTS[recipe.formation]
+  if (recipe.formation === 'chow') {
+    const coveredRanks = new Set<MahjongRank>([
+      ...towers.map(({ state }) => state.ranks[0]),
+      ...(wall?.mahjongTile ? [wall.mahjongTile.rank] : [])
+    ])
+    return recipe.ranks.reduce<number[]>((slots, rank, index) => {
+      if (!coveredRanks.has(rank)) slots.push(index)
+      return slots
+    }, [])
+  }
+
+  const resultWhite = towers.reduce(
+    (total, { state }) => total + getWhiteCount(state),
+    whiteCount
+  )
+  const slots: number[] = []
+  for (let index = tileCount - resultWhite; index < tileCount; index += 1) {
+    slots.push(index)
+  }
+  return slots
 }
 
 export function planMahjongSynthesis(
@@ -255,10 +312,11 @@ export function planMahjongSynthesis(
 
   const whiteCount = request.whiteCount ?? 0
   const availableWhiteCount = request.availableWhiteCount ?? 0
+  // "不能全是白"：白不能作锚点，锚点恒为真实塔，故白数至多为牌位数−1。
   if (
     !Number.isInteger(whiteCount)
     || whiteCount < 0
-    || whiteCount > MAHJONG_WHITE_CATALYST_CONFIG.maxPerSynthesis
+    || whiteCount > MAHJONG_FORMATION_TILE_COUNTS[request.recipe.formation] - 1
   ) {
     return { ok: false, reason: 'too_many_white' }
   }
@@ -370,6 +428,12 @@ export function planMahjongSynthesis(
     if (!hasSameFace(towers, null)) return { ok: false, reason: 'invalid_face' }
   }
 
+  const whiteSlotIndices = getResultWhiteSlotIndices(
+    request.recipe,
+    towers,
+    wall,
+    whiteCount
+  )
   const resultState: MahjongTowerState = {
     formation,
     suit: anchor.state.suit,
@@ -377,11 +441,7 @@ export function planMahjongSynthesis(
     containedTileIds: [...containedTileIds],
     activeSources: towers.flatMap(({ state }) => cloneStateSources(state)),
     attachments: inheritAttachments(formation, towers),
-    ...(
-      whiteCount > 0 || towers.some(({ state }) => state.usesWhiteSubstitution)
-        ? { usesWhiteSubstitution: true }
-        : {}
-    )
+    ...(whiteSlotIndices.length > 0 ? { whiteSlotIndices } : {})
   }
   const pureWallPositions = positions.slice(1).map(position => ({ ...position }))
 
@@ -394,7 +454,7 @@ export function planMahjongSynthesis(
       consumedTowerIds: materialTowers.map(({ tower }) => tower.id),
       consumedWallPositions: walls.map(candidate => ({ row: candidate.row, col: candidate.col })),
       pureWallPositions,
-      consumedWhiteCount: whiteCount as 0 | 1
+      consumedWhiteCount: whiteCount
     }
   }
 }

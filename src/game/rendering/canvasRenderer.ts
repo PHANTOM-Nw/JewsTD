@@ -70,6 +70,7 @@ const MAHJONG_IMPACT_PULSE_DURATION_MS = 220
 
 export interface MahjongFormationTileLayout {
   rank: MahjongNumberTile['rank']
+  isWhite: boolean
   offsetX: number
   offsetY: number
   rotationRadians: number
@@ -78,7 +79,7 @@ export interface MahjongFormationTileLayout {
 
 const MAHJONG_FORMATION_TILE_GEOMETRY: Record<
   MahjongFormation,
-  readonly Omit<MahjongFormationTileLayout, 'rank'>[]
+  readonly Omit<MahjongFormationTileLayout, 'rank' | 'isWhite'>[]
 > = {
   single: [
     { offsetX: 0, offsetY: 0, rotationRadians: 0, height: MAHJONG_TOWER_HEIGHT }
@@ -112,13 +113,15 @@ const MAHJONG_FORMATION_TILE_GEOMETRY: Record<
  */
 export function getMahjongFormationTileLayouts(
   formation: MahjongFormation,
-  ranks: readonly MahjongNumberTile['rank'][]
+  ranks: readonly MahjongNumberTile['rank'][],
+  whiteSlotIndices: readonly number[] = []
 ): MahjongFormationTileLayout[] {
   return MAHJONG_FORMATION_TILE_GEOMETRY[formation]
     .slice(0, ranks.length)
     .map((geometry, index) => ({
       ...geometry,
-      rank: ranks[index]
+      rank: ranks[index],
+      isWhite: whiteSlotIndices.includes(index)
     }))
 }
 
@@ -437,27 +440,39 @@ function drawMahjongBambooFace(
   })
 }
 
+export type MahjongTileFaceDescriptor =
+  | { kind: 'number'; suit: MahjongSuit; rank: MahjongNumberTile['rank'] }
+  | { kind: 'white' }
+
 function drawMahjongFace(
   ctx: CanvasRenderingContext2D,
-  tile: Pick<MahjongNumberTile, 'suit' | 'rank'>
+  face: MahjongTileFaceDescriptor
 ) {
-  if (tile.suit === 'characters') {
+  if (face.kind === 'white') {
+    roundedRect(ctx, 8, 8, 24, 38, 2)
+    ctx.strokeStyle = MAHJONG_MARK_COLORS.blue
+    ctx.lineWidth = 2.2
+    ctx.stroke()
+    return
+  }
+
+  if (face.suit === 'characters') {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.font = "800 18px KaiTi, STKaiti, 'Songti SC', serif"
     ctx.fillStyle = '#18212b'
-    ctx.fillText(MAHJONG_CHARACTER_NUMERALS[tile.rank], 20, 18)
+    ctx.fillText(MAHJONG_CHARACTER_NUMERALS[face.rank], 20, 18)
     ctx.fillStyle = MAHJONG_MARK_COLORS.red
     ctx.fillText('萬', 20, 39)
     return
   }
 
-  if (tile.suit === 'dots') {
-    drawMahjongDotFace(ctx, tile.rank, MAHJONG_DOT_LAYOUTS[tile.rank])
+  if (face.suit === 'dots') {
+    drawMahjongDotFace(ctx, face.rank, MAHJONG_DOT_LAYOUTS[face.rank])
     return
   }
 
-  drawMahjongBambooFace(ctx, MAHJONG_BAMBOO_LAYOUTS[tile.rank])
+  drawMahjongBambooFace(ctx, MAHJONG_BAMBOO_LAYOUTS[face.rank])
 }
 
 function drawMahjongTileBody(
@@ -465,7 +480,7 @@ function drawMahjongTileBody(
   centerX: number,
   centerY: number,
   height: number,
-  tile: Pick<MahjongNumberTile, 'suit' | 'rank'>,
+  face: MahjongTileFaceDescriptor,
   rotationRadians = 0
 ) {
   const width = height * MAHJONG_TILE_ASPECT_RATIO
@@ -497,7 +512,7 @@ function drawMahjongTileBody(
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.82)'
   ctx.lineWidth = 1.2
   ctx.stroke()
-  drawMahjongFace(ctx, tile)
+  drawMahjongFace(ctx, face)
   ctx.restore()
 }
 
@@ -538,7 +553,13 @@ function drawMahjongWall(
   // 两张灰色叠牌构成紧凑牌墙轮廓，前方牌面继续显示被锁住的实体牌。
   drawGreyWallTile(ctx, centerX - 7, centerY + 3, 18, 25)
   drawGreyWallTile(ctx, centerX + 7, centerY + 3, 18, 25)
-  drawMahjongTileBody(ctx, centerX, centerY - 2, MAHJONG_WALL_FACE_HEIGHT, tile)
+  drawMahjongTileBody(
+    ctx,
+    centerX,
+    centerY - 2,
+    MAHJONG_WALL_FACE_HEIGHT,
+    { kind: 'number', suit: tile.suit, rank: tile.rank }
+  )
 }
 
 function drawPureMahjongWall(
@@ -1015,14 +1036,17 @@ function drawTower(
     const formation = state?.formation ?? 'single'
     const suit = state?.suit ?? tower.mahjongTile.suit
     const ranks = state?.ranks ?? [tower.mahjongTile.rank]
-    const layouts = getMahjongFormationTileLayouts(formation, ranks)
+    const whiteSlotIndices = state?.whiteSlotIndices ?? []
+    const layouts = getMahjongFormationTileLayouts(formation, ranks, whiteSlotIndices)
     layouts.forEach(layout => {
       drawMahjongTileBody(
         ctx,
         tower.position.x + layout.offsetX * qualityScale,
         tower.position.y + layout.offsetY * qualityScale,
         layout.height * qualityScale,
-        { suit, rank: layout.rank },
+        layout.isWhite
+          ? { kind: 'white' }
+          : { kind: 'number', suit, rank: layout.rank },
         layout.rotationRadians
       )
     })

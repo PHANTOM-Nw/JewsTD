@@ -53,7 +53,7 @@ export interface AvailableMahjongSynthesisOption {
   recipe: MahjongSynthesisRecipe
   materialTowerIds: string[]
   wallPosition: { row: number; col: number } | null
-  useWhite: boolean
+  whiteCount: number
 }
 
 export interface MahjongSynthesisAvailabilityRequest {
@@ -140,49 +140,52 @@ export function getAvailableMahjongSynthesisOptions({
     : 0
 
   SYNTHESIS_RECIPES.forEach(recipe => {
-    const allowsCatalysts = recipe.formation === 'chow' || recipe.formation === 'pung'
-    const wallSelections: Array<GridCell | null> = allowsCatalysts
+    const recipeTileCount = MAHJONG_FORMATION_TILE_COUNTS[recipe.formation]
+    // 墙只在吃/碰中被吸收；杠绝不吸墙，故与白的允许范围拆成两个独立开关。
+    const allowsWall = recipe.formation === 'chow' || recipe.formation === 'pung'
+    // 白的允许形态直接由配置派生（当前含吃/碰/杠），避免与引擎白名单脱节。
+    const allowsWhite = MAHJONG_WHITE_CATALYST_CONFIG.allowedFormations.some(
+      allowedFormation => allowedFormation === recipe.formation
+    )
+    const wallSelections: Array<GridCell | null> = allowsWall
       ? [null, ...tileWalls]
       : [null]
-    const whiteSelections = allowsCatalysts && availableWhiteCount > 0
-      ? [0, 1] as const
-      : [0] as const
 
     towerSelections.forEach(selectedTowers => {
       const selectedLogicalTileCount = selectedTowers.reduce((count, tower) => (
         count + MAHJONG_FORMATION_TILE_COUNTS[tower.mahjongState!.formation]
       ), 0)
       wallSelections.forEach(selectedWall => {
-        whiteSelections.forEach(whiteCount => {
-          const logicalTileCount = anchorLogicalTileCount
-            + selectedLogicalTileCount
-            + (selectedWall ? 1 : 0)
-            + whiteCount
-          if (logicalTileCount !== MAHJONG_FORMATION_TILE_COUNTS[recipe.formation]) return
+        // 每个 (主动材料, 墙) 组合的白数唯一确定：锚点恒为真实塔，白数至多为牌位数−1。
+        const neededWhite = recipeTileCount
+          - anchorLogicalTileCount
+          - selectedLogicalTileCount
+          - (selectedWall ? 1 : 0)
+        if (neededWhite < 0) return
+        if (neededWhite > 0 && (!allowsWhite || neededWhite > availableWhiteCount)) return
 
-          const result = planMahjongSynthesis({
-            gameStatus,
-            anchor: anchorTower,
-            materials: [
-              ...selectedTowers.map(tower => ({ kind: 'tower' as const, tower })),
-              ...(selectedWall
-                ? [{ kind: 'wall' as const, wall: selectedWall }]
-                : [])
-            ],
-            recipe,
-            whiteCount,
-            availableWhiteCount
-          })
-          if (!result.ok) return
+        const result = planMahjongSynthesis({
+          gameStatus,
+          anchor: anchorTower,
+          materials: [
+            ...selectedTowers.map(tower => ({ kind: 'tower' as const, tower })),
+            ...(selectedWall
+              ? [{ kind: 'wall' as const, wall: selectedWall }]
+              : [])
+          ],
+          recipe,
+          whiteCount: neededWhite,
+          availableWhiteCount
+        })
+        if (!result.ok) return
 
-          options.push({
-            recipe,
-            materialTowerIds: selectedTowers.map(tower => tower.id),
-            wallPosition: selectedWall
-              ? { row: selectedWall.row, col: selectedWall.col }
-              : null,
-            useWhite: whiteCount === 1
-          })
+        options.push({
+          recipe,
+          materialTowerIds: selectedTowers.map(tower => tower.id),
+          wallPosition: selectedWall
+            ? { row: selectedWall.row, col: selectedWall.col }
+            : null,
+          whiteCount: neededWhite
         })
       })
     })
@@ -402,7 +405,7 @@ export function getMahjongWhiteCatalystDescription(): MahjongWhiteCatalystDescri
     title: MAHJONG_HONOR_LABELS.white,
     effects: [
       `只能在${allowedLabel}中作为万能材料替代缺失的逻辑牌位`,
-      `每次合成最多使用 ${white.maxPerSynthesis} 张，成功确认后才消耗`,
+      '可替代任意数量的缺失逻辑牌位，数量受功能牌区白板库存限制，成功确认后才消耗',
       '不提供实体数牌、随机属性或附着，也不能作为锚点'
     ],
     usageNote: `白无法直接激活或附着，只能在合成工作台里作为${allowedLabel}的催化材料使用。`
@@ -414,7 +417,7 @@ export function getMahjongPairRouteHint(
 ): string | null {
   if (state.formation !== 'pair' || state.ranks.length === 0) return null
   const face = getMahjongTileName({ suit: state.suit, rank: state.ranks[0] })
-  return `听碰：缺1张${face}（主动单牌、同牌牌墙或白）；听杠：缺2张主动${face}，或1组相同对子。`
+  return `听碰：缺1张${face}（主动单牌、同牌牌墙或白板）；听杠：缺2张主动${face}、1组相同对子，或用白板补足缺口。`
 }
 
 export interface MahjongSynthesisSubmitRequest {
@@ -422,7 +425,7 @@ export interface MahjongSynthesisSubmitRequest {
   materialTowerIds?: string[]
   wallPositions?: Array<{ row: number; col: number }>
   recipe: MahjongSynthesisRecipe
-  useWhite?: boolean
+  whiteCount?: number
 }
 
 export type MahjongSynthesisSubmitResult =

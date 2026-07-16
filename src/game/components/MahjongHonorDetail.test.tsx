@@ -45,7 +45,8 @@ describe('MahjongHonorDetail', () => {
     expect(markup).toContain('aria-modal="true"')
     expect(markup).toContain('aria-labelledby="mahjong-honor-title"')
     expect(markup).toContain(MAHJONG_HONOR_LABELS.white)
-    expect(markup).toContain(`${MAHJONG_WHITE_CATALYST_CONFIG.maxPerSynthesis} 张`)
+    expect(markup).toContain('任意数量')
+    expect(MAHJONG_WHITE_CATALYST_CONFIG.allowedFormations).toContain('kong')
     // 白没有附着流程，因此没有确认选择/确认附着按钮。
     expect(markup).not.toContain('确认选择')
     expect(markup).not.toContain('确认附着')

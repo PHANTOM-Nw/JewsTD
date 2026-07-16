@@ -226,9 +226,8 @@ describe('mahjong v0.1 combat configuration', () => {
         bossStunDurationMs: 350
       }
     })
-    expect(MAHJONG_WHITE_CATALYST_CONFIG).toMatchObject({
-      allowedFormations: ['chow', 'pung'],
-      maxPerSynthesis: 1,
+    expect(MAHJONG_WHITE_CATALYST_CONFIG).toEqual({
+      allowedFormations: ['chow', 'pung', 'kong'],
       contributesRandomStats: false,
       canBeAnchor: false,
       consumedOnUse: true

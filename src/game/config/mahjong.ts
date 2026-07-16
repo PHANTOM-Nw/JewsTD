@@ -241,8 +241,7 @@ export const MAHJONG_GREEN_ATTACHMENT_CONFIG = {
 } as const satisfies Record<MahjongSuit, object>
 
 export const MAHJONG_WHITE_CATALYST_CONFIG = {
-  allowedFormations: ['chow', 'pung'] as const,
-  maxPerSynthesis: 1,
+  allowedFormations: ['chow', 'pung', 'kong'] as const,
   contributesRandomStats: false,
   canBeAnchor: false,
   consumedOnUse: true

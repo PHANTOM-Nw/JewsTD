@@ -33,12 +33,14 @@ function createCanvasContext() {
   const spies = {
     arc: vi.fn(),
     bezierCurveTo: vi.fn(),
+    fill: vi.fn(),
     fillText: vi.fn(),
     lineTo: vi.fn(),
     moveTo: vi.fn(),
     rotate: vi.fn(),
     roundRect: vi.fn(),
     setLineDash: vi.fn(),
+    stroke: vi.fn(),
     strokeRect: vi.fn(),
     translate: vi.fn()
   }
@@ -50,7 +52,7 @@ function createCanvasContext() {
     closePath: vi.fn(),
     drawImage: vi.fn(),
     ellipse: vi.fn(),
-    fill: vi.fn(),
+    fill: spies.fill,
     fillRect: vi.fn(),
     fillText: spies.fillText,
     lineTo: spies.lineTo,
@@ -61,11 +63,40 @@ function createCanvasContext() {
     save: vi.fn(),
     scale: vi.fn(),
     setLineDash: spies.setLineDash,
-    stroke: vi.fn(),
+    stroke: spies.stroke,
     strokeRect: spies.strokeRect,
     translate: spies.translate
   } as unknown as CanvasRenderingContext2D
   return { ctx, spies }
+}
+
+/**
+ * Finds the call index of a specific `roundRect` invocation by its geometry args,
+ * then asserts the very next stroke/fill call recorded across both spies (by
+ * Vitest's global `invocationCallOrder`) is a stroke, not a fill — i.e. the shape
+ * is stroked only, never filled.
+ */
+function expectStrokedNotFilledRect(
+  spies: ReturnType<typeof createCanvasContext>['spies'],
+  args: [number, number, number, number, number]
+) {
+  const callIndex = spies.roundRect.mock.calls.findIndex(call => (
+    call[0] === args[0]
+    && call[1] === args[1]
+    && call[2] === args[2]
+    && call[3] === args[3]
+    && call[4] === args[4]
+  ))
+  expect(callIndex).toBeGreaterThanOrEqual(0)
+  const rectOrder = spies.roundRect.mock.invocationCallOrder[callIndex]
+
+  const nextStrokeOrder = spies.stroke.mock.invocationCallOrder.find(order => order > rectOrder)
+  expect(nextStrokeOrder).toBeDefined()
+
+  const fillOrdersBeforeNextStroke = spies.fill.mock.invocationCallOrder.filter(order => (
+    order > rectOrder && order < (nextStrokeOrder as number)
+  ))
+  expect(fillOrdersBeforeNextStroke).toEqual([])
 }
 
 function createMahjongState(
@@ -210,6 +241,20 @@ describe('mahjong formation tile layouts', () => {
     expect(new Set(pair.map(layout => layout.offsetX)).size).toBe(2)
     expect(kong).toHaveLength(4)
     expect(new Set(kong.map(layout => `${layout.offsetX},${layout.offsetY}`)).size).toBe(4)
+  })
+
+  it('defaults every slot to non-white when no white slot indices are given', () => {
+    const layouts = getMahjongFormationTileLayouts('chow', [3, 4, 5])
+
+    expect(layouts.map(layout => layout.isWhite)).toEqual([false, false, false])
+  })
+
+  it('marks only the given white slot indices as white', () => {
+    const pung = getMahjongFormationTileLayouts('pung', [7, 7, 7], [2])
+    const kong = getMahjongFormationTileLayouts('kong', [5, 5, 5, 5], [2, 3])
+
+    expect(pung.map(layout => layout.isWhite)).toEqual([false, false, true])
+    expect(kong.map(layout => layout.isWhite)).toEqual([false, false, true, true])
   })
 })
 
@@ -572,6 +617,73 @@ describe('canvas mahjong rendering', () => {
       [100, 100],
       [105, 104]
     ]))
+  })
+
+  it('draws a white catalyst slot in a pung as a stroked, unfilled rounded rect', () => {
+    const { ctx, spies } = createCanvasContext()
+    const tower = createMahjongTower(
+      'white-pung',
+      { id: 'pung-white-anchor', suit: 'characters', rank: 7, copy: 1 },
+      100,
+      100
+    )
+    tower.mahjongState = {
+      ...createMahjongState('pung'),
+      ranks: [7, 7, 7],
+      whiteSlotIndices: [2]
+    }
+
+    renderGameScene(ctx, {
+      grid: initializeGrid(),
+      currentPath: null,
+      placementPreview: null,
+      enemies: [],
+      towers: [tower],
+      bullets: [],
+      damageNumbers: [],
+      gameTime: 0
+    }, { resolveImage: () => null })
+
+    // Only the two remaining real tiles draw numeral faces.
+    expect(spies.fillText.mock.calls.map(([text]) => text)).toEqual([
+      '七', '萬', '七', '萬'
+    ])
+    expectStrokedNotFilledRect(spies, [8, 8, 24, 38, 2])
+  })
+
+  it('draws two accumulated white catalyst slots in a kong', () => {
+    const { ctx, spies } = createCanvasContext()
+    const tower = createMahjongTower(
+      'white-kong',
+      { id: 'kong-white-anchor', suit: 'characters', rank: 5, copy: 1 },
+      100,
+      100
+    )
+    tower.mahjongState = {
+      ...createMahjongState('kong'),
+      ranks: [5, 5, 5, 5],
+      whiteSlotIndices: [2, 3]
+    }
+
+    renderGameScene(ctx, {
+      grid: initializeGrid(),
+      currentPath: null,
+      placementPreview: null,
+      enemies: [],
+      towers: [tower],
+      bullets: [],
+      damageNumbers: [],
+      gameTime: 0
+    }, { resolveImage: () => null })
+
+    // Only the two remaining real tiles draw numeral faces.
+    expect(spies.fillText.mock.calls.map(([text]) => text)).toEqual([
+      '五', '萬', '五', '萬'
+    ])
+    const whiteRectCalls = spies.roundRect.mock.calls.filter(call => (
+      call[0] === 8 && call[1] === 8 && call[2] === 24 && call[3] === 38 && call[4] === 2
+    ))
+    expect(whiteRectCalls).toHaveLength(2)
   })
 
   it('layers suit core, red flame and green seal without hiding the tile face', () => {
