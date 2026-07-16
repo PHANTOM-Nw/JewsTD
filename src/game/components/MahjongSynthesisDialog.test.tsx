@@ -118,6 +118,7 @@ describe('MahjongSynthesisDialog', () => {
     expect(markup).not.toContain('type="checkbox"')
     expect(markup).not.toContain('纯墙体')
     expect(markup).toContain('产物固定保留在这里')
+    expect(markup).toContain('mahjong-synthesis__anchor--target')
     expect(markup).toContain('aria-live="polite"')
     expect(markup).toContain('aria-modal="true"')
   })

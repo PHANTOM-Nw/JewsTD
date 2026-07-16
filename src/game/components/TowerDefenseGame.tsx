@@ -17,6 +17,7 @@ import {
 } from '../config/mahjong'
 import { MAP_CONFIG } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
+import { getBoardCellOverlayStyle } from './boardOverlay'
 import { screenPointToGrid } from './canvasPointer'
 import './TowerDefenseGame.css'
 
@@ -258,10 +259,21 @@ export const TowerDefenseGame: React.FC = () => {
           {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (
             <MahjongActivationDecision
               towers={decisionTowers}
+              fieldTowers={activeTowers}
+              fieldWalls={mahjongWalls}
               selectedTowerId={selectedTowerForDecision.id}
               onSelect={setSelectedTowerForDecision}
               onConfirm={handleFinalizeTowers}
             />
+          )}
+
+          {selectedSynthesisAnchor && (
+            <div className="game-board__overlay" aria-hidden="true">
+              <div
+                className="synthesis-anchor-highlight"
+                style={getBoardCellOverlayStyle(selectedSynthesisAnchor.gridPosition)}
+              />
+            </div>
           )}
 
           <p className="mahjong-action-message--global" aria-live="polite">

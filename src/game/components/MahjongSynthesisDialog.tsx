@@ -277,7 +277,7 @@ export function MahjongSynthesisDialog({
           </button>
         </header>
 
-        <div className="synthesis-dialog__anchor">
+        <div className="synthesis-dialog__anchor mahjong-synthesis__anchor--target">
           {anchorTower.mahjongTile && <MahjongTile tile={anchorTower.mahjongTile} compact />}
           <span>
             锚点棋子

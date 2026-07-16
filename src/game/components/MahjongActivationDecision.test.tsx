@@ -2,7 +2,7 @@ import { Children, isValidElement } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { MahjongSuit, Tower } from '../types/game'
+import type { GridCell, MahjongSuit, Tower } from '../types/game'
 import { MahjongActivationDecision } from './MahjongActivationDecision'
 
 type ElementProps = {
@@ -64,11 +64,30 @@ const candidates = [
   tower('tong', 'dots', 8, { damage: 26, attackIntervalMs: 1100, attackRange: 132 })
 ]
 
+function tileWall(rank: 2 | 5 | 8, col: number): GridCell {
+  return {
+    row: 4,
+    col,
+    type: 'obstacle',
+    mahjongWallKind: 'tile',
+    mahjongTile: { id: `opaque-wall-${rank}`, suit: 'characters', rank, copy: 2 }
+  }
+}
+
+const pureWall: GridCell = {
+  row: 5,
+  col: 3,
+  type: 'obstacle',
+  mahjongWallKind: 'pure'
+}
+
 describe('MahjongActivationDecision', () => {
   it('compares all three random stats and the suit mechanic on every candidate', () => {
     const markup = renderToStaticMarkup(
       <MahjongActivationDecision
         towers={candidates}
+        fieldTowers={[]}
+        fieldWalls={[]}
         selectedTowerId="wan"
         onSelect={vi.fn()}
         onConfirm={vi.fn()}
@@ -94,6 +113,8 @@ describe('MahjongActivationDecision', () => {
     const confirm = vi.fn()
     const panel = MahjongActivationDecision({
       towers: candidates,
+      fieldTowers: [],
+      fieldWalls: [],
       selectedTowerId: 'wan',
       onSelect: select,
       onConfirm: confirm
@@ -110,5 +131,35 @@ describe('MahjongActivationDecision', () => {
 
     expect(select).toHaveBeenCalledWith(candidates[1])
     expect(confirm).toHaveBeenCalledWith('wan')
+  })
+
+  it('lists the field faces in a default-collapsed block that highlights the current round', () => {
+    const history = tower('history', 'bamboo', 5, {
+      damage: 22,
+      attackIntervalMs: 700,
+      attackRange: 130
+    })
+    const markup = renderToStaticMarkup(
+      <MahjongActivationDecision
+        towers={candidates}
+        fieldTowers={[history]}
+        fieldWalls={[tileWall(8, 2), pureWall]}
+        selectedTowerId="wan"
+        onSelect={vi.fn()}
+        onConfirm={vi.fn()}
+      />
+    )
+
+    // 折叠标题与总数：本轮 3 + 历史激活塔 1 + 带牌面墙 1（纯墙不计）。
+    expect(markup).toContain('场上牌面（5）')
+    // 默认收起：<details> 不带 open 属性。
+    expect(markup).toContain('<details class="tower-decision__field">')
+    expect(markup).not.toMatch(/<details[^>]*\bopen\b/)
+    // 本轮 3 张高亮。
+    expect(markup.match(/field-tile--current/g)).toHaveLength(3)
+    // 历史激活塔以普通 field-tile 渲染（既非 current 也非 wall）。
+    expect(markup.match(/class="field-tile"/g)).toHaveLength(1)
+    // 只有 1 面带牌面墙，纯墙被忽略。
+    expect(markup.match(/field-tile--wall/g)).toHaveLength(1)
   })
 })

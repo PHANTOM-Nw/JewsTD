@@ -1,7 +1,8 @@
 import {
-  getMahjongTileName
+  getMahjongTileName,
+  MAHJONG_SUITS
 } from '../config/mahjong'
-import type { Tower } from '../types/game'
+import type { GridCell, MahjongNumberTile, Tower } from '../types/game'
 import {
   getMahjongSuitMechanicLabel,
   getMahjongTowerComparisonLabel,
@@ -11,19 +12,42 @@ import { MahjongTile } from './MahjongTile'
 
 interface MahjongActivationDecisionProps {
   towers: readonly Tower[]
+  fieldTowers: readonly Tower[]
+  fieldWalls: readonly GridCell[]
   selectedTowerId: string
   onSelect: (tower: Tower) => void
   onConfirm: (towerId: string) => void
 }
 
+function compareSuitRank(
+  a: Pick<MahjongNumberTile, 'suit' | 'rank'>,
+  b: Pick<MahjongNumberTile, 'suit' | 'rank'>
+): number {
+  const suitDelta = MAHJONG_SUITS.indexOf(a.suit) - MAHJONG_SUITS.indexOf(b.suit)
+  return suitDelta !== 0 ? suitDelta : a.rank - b.rank
+}
+
 export function MahjongActivationDecision({
   towers,
+  fieldTowers,
+  fieldWalls,
   selectedTowerId,
   onSelect,
   onConfirm
 }: MahjongActivationDecisionProps) {
   const selectedTower = towers.find(tower => tower.id === selectedTowerId)
   if (!selectedTower?.mahjongTile) return null
+
+  const currentTowers = towers.filter((tower): tower is Tower => Boolean(tower.mahjongTile))
+  const historyTowers = fieldTowers
+    .filter((tower): tower is Tower => Boolean(tower.mahjongTile))
+    .slice()
+    .sort((a, b) => compareSuitRank(a.mahjongTile!, b.mahjongTile!))
+  const tileWalls = fieldWalls
+    .filter(wall => wall.mahjongWallKind === 'tile' && Boolean(wall.mahjongTile))
+    .slice()
+    .sort((a, b) => compareSuitRank(a.mahjongTile!, b.mahjongTile!))
+  const fieldTotal = currentTowers.length + historyTowers.length + tileWalls.length
 
   return (
     <section
@@ -79,6 +103,29 @@ export function MahjongActivationDecision({
       >
         激活此牌
       </button>
+
+      <details className="tower-decision__field">
+        <summary>场上牌面（{fieldTotal}）</summary>
+        <div className="tower-decision__field-tiles">
+          {currentTowers.map(tower => (
+            <span key={tower.id} className="field-tile field-tile--current">
+              <MahjongTile tile={tower.mahjongTile!} compact />
+            </span>
+          ))}
+          {historyTowers.map(tower => (
+            <span key={tower.id} className="field-tile">
+              <MahjongTile tile={tower.mahjongTile!} compact />
+            </span>
+          ))}
+          {tileWalls.map(wall => (
+            <span key={`${wall.row}:${wall.col}`} className="field-tile field-tile--wall">
+              <MahjongTile tile={wall.mahjongTile!} compact />
+              <span className="field-tile__wall-mark">墙</span>
+            </span>
+          ))}
+        </div>
+      </details>
+
       <p className="tower-decision__hint">
         其余 2 张保留完整牌面并原地成为牌墙，继续改变敌人路线。
       </p>
