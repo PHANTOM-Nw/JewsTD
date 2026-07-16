@@ -1,8 +1,5 @@
-import {
-  getMahjongTileName,
-  MAHJONG_SUITS
-} from '../config/mahjong'
-import type { GridCell, MahjongNumberTile, Tower } from '../types/game'
+import { getMahjongTileName } from '../config/mahjong'
+import type { Tower } from '../types/game'
 import {
   getMahjongSuitMechanicLabel,
   getMahjongTowerComparisonLabel,
@@ -12,42 +9,36 @@ import { MahjongTile } from './MahjongTile'
 
 interface MahjongActivationDecisionProps {
   towers: readonly Tower[]
-  fieldTowers: readonly Tower[]
-  fieldWalls: readonly GridCell[]
   selectedTowerId: string
+  minimized: boolean
   onSelect: (tower: Tower) => void
   onConfirm: (towerId: string) => void
-}
-
-function compareSuitRank(
-  a: Pick<MahjongNumberTile, 'suit' | 'rank'>,
-  b: Pick<MahjongNumberTile, 'suit' | 'rank'>
-): number {
-  const suitDelta = MAHJONG_SUITS.indexOf(a.suit) - MAHJONG_SUITS.indexOf(b.suit)
-  return suitDelta !== 0 ? suitDelta : a.rank - b.rank
+  onToggleMinimized: () => void
 }
 
 export function MahjongActivationDecision({
   towers,
-  fieldTowers,
-  fieldWalls,
   selectedTowerId,
+  minimized,
   onSelect,
-  onConfirm
+  onConfirm,
+  onToggleMinimized
 }: MahjongActivationDecisionProps) {
   const selectedTower = towers.find(tower => tower.id === selectedTowerId)
   if (!selectedTower?.mahjongTile) return null
 
-  const currentTowers = towers.filter((tower): tower is Tower => Boolean(tower.mahjongTile))
-  const historyTowers = fieldTowers
-    .filter((tower): tower is Tower => Boolean(tower.mahjongTile))
-    .slice()
-    .sort((a, b) => compareSuitRank(a.mahjongTile!, b.mahjongTile!))
-  const tileWalls = fieldWalls
-    .filter(wall => wall.mahjongWallKind === 'tile' && Boolean(wall.mahjongTile))
-    .slice()
-    .sort((a, b) => compareSuitRank(a.mahjongTile!, b.mahjongTile!))
-  const fieldTotal = currentTowers.length + historyTowers.length + tileWalls.length
+  if (minimized) {
+    return (
+      <button
+        type="button"
+        className="tower-decision-restore"
+        onClick={onToggleMinimized}
+        aria-label="展开三选一面板"
+      >
+        三选一 ▴
+      </button>
+    )
+  }
 
   return (
     <section
@@ -56,6 +47,15 @@ export function MahjongActivationDecision({
       aria-modal="true"
       aria-labelledby="tower-decision-title"
     >
+      <button
+        type="button"
+        className="tower-decision__minimize"
+        onClick={onToggleMinimized}
+        aria-label="收起三选一面板，查看场上牌面"
+      >
+        收起 ▾
+      </button>
+
       <span className="tower-decision__eyebrow">三选一</span>
       <h2 id="tower-decision-title">选择要激活的牌</h2>
 
@@ -103,28 +103,6 @@ export function MahjongActivationDecision({
       >
         激活此牌
       </button>
-
-      <details className="tower-decision__field">
-        <summary>场上牌面（{fieldTotal}）</summary>
-        <div className="tower-decision__field-tiles">
-          {currentTowers.map(tower => (
-            <span key={tower.id} className="field-tile field-tile--current">
-              <MahjongTile tile={tower.mahjongTile!} compact />
-            </span>
-          ))}
-          {historyTowers.map(tower => (
-            <span key={tower.id} className="field-tile">
-              <MahjongTile tile={tower.mahjongTile!} compact />
-            </span>
-          ))}
-          {tileWalls.map(wall => (
-            <span key={`${wall.row}:${wall.col}`} className="field-tile field-tile--wall">
-              <MahjongTile tile={wall.mahjongTile!} compact />
-              <span className="field-tile__wall-mark">墙</span>
-            </span>
-          ))}
-        </div>
-      </details>
 
       <p className="tower-decision__hint">
         其余 2 张保留完整牌面并原地成为牌墙，继续改变敌人路线。

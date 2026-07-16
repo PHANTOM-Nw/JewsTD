@@ -2,7 +2,7 @@ import { Children, isValidElement } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { MahjongRoundTileView } from '../types/game'
+import type { GameStatus, MahjongRoundTileView } from '../types/game'
 import { BuildPanel, FunctionTileStrip } from './BuildPanel'
 
 type ElementProps = {
@@ -259,5 +259,62 @@ describe('BuildPanel function tile actions', () => {
       element.props['aria-label'] === '选择中，然后选择一座激活棋子附着'
     ))
     expect(selectRed?.props.disabled).toBe(false)
+  })
+})
+
+describe('BuildPanel primary action by phase', () => {
+  const renderPhase = (gameStatus: GameStatus) => renderToStaticMarkup(
+    <BuildPanel
+      wood={0}
+      gold={50}
+      placedCount={3}
+      gameStatus={gameStatus}
+      roundTiles={[]}
+      heldTileSuit={null}
+      functionTiles={[]}
+      canGambleForHonor={false}
+      honorGambleChance={null}
+      lastHonorGamble={null}
+      currentWave={0}
+      onStartWave={vi.fn()}
+      onPause={vi.fn()}
+      onResume={vi.fn()}
+      onReset={vi.fn()}
+    />
+  )
+
+  it('does not render a false primary action while tiles are being placed', () => {
+    expect(renderPhase('building')).not.toContain('action-deck__primary')
+  })
+
+  it.each([
+    ['deciding', '选择 1 张激活'],
+    ['resolving_hand', '保留 1 张手牌']
+  ] as const)('renders %s as a compact non-interactive status', (gameStatus, label) => {
+    const markup = renderPhase(gameStatus)
+
+    expect(markup).toContain('action-deck__primary action-deck__primary--status')
+    expect(markup).toContain(label)
+    expect(markup).not.toMatch(/<button[^>]*action-deck__primary--status/)
+  })
+
+  it.each([
+    ['ready', '开始第 1 波'],
+    ['playing', '暂停'],
+    ['paused', '继续'],
+    ['game_over', '重新开始'],
+    ['victory', '再玩一局']
+  ] as const)('renders %s with the shared compact action style', (gameStatus, label) => {
+    const markup = renderPhase(gameStatus)
+
+    expect(markup).toContain('action-deck__primary action-deck__primary--action')
+    expect(markup).toContain(label)
+  })
+
+  it('places the first-wave action beside the phase copy before auxiliary rows', () => {
+    const markup = renderPhase('ready')
+
+    expect(markup.indexOf('action-deck__primary--action'))
+      .toBeLessThan(markup.indexOf('mahjong-functions'))
   })
 })

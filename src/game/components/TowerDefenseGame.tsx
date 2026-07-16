@@ -53,6 +53,7 @@ export const TowerDefenseGame: React.FC = () => {
 
   const [currentBatchTowers, setCurrentBatchTowers] = useState<string[]>([])
   const [selectedTowerForDecision, setSelectedTowerForDecision] = useState<Tower | null>(null)
+  const [decisionMinimized, setDecisionMinimized] = useState(false)
   const [activeTileDrag, setActiveTileDrag] = useState<ActiveTileDrag | null>(null)
   const [selectedSynthesisAnchor, setSelectedSynthesisAnchor] = useState<Tower | null>(null)
   const [selectedWall, setSelectedWall] = useState<GridCell | null>(null)
@@ -230,6 +231,7 @@ export const TowerDefenseGame: React.FC = () => {
     if (finalizeTowers(keepTowerId)) {
       setCurrentBatchTowers([])
       setSelectedTowerForDecision(null)
+      setDecisionMinimized(false)
     }
   }
 
@@ -237,6 +239,7 @@ export const TowerDefenseGame: React.FC = () => {
     resetGame()
     setCurrentBatchTowers([])
     setSelectedTowerForDecision(null)
+    setDecisionMinimized(false)
     setActiveTileDrag(null)
     setSelectedSynthesisAnchor(null)
     setSelectedWall(null)
@@ -259,18 +262,30 @@ export const TowerDefenseGame: React.FC = () => {
           {uiState.gameStatus === 'deciding' && selectedTowerForDecision && (
             <MahjongActivationDecision
               towers={decisionTowers}
-              fieldTowers={activeTowers}
-              fieldWalls={mahjongWalls}
               selectedTowerId={selectedTowerForDecision.id}
+              minimized={decisionMinimized}
               onSelect={setSelectedTowerForDecision}
               onConfirm={handleFinalizeTowers}
+              onToggleMinimized={() => setDecisionMinimized(v => !v)}
             />
+          )}
+
+          {uiState.gameStatus === 'deciding' && decisionMinimized && (
+            <div className="game-board__overlay" aria-hidden="true">
+              {decisionTowers.map(tower => (
+                <div
+                  key={tower.id}
+                  className="board-cell-highlight"
+                  style={getBoardCellOverlayStyle(tower.gridPosition)}
+                />
+              ))}
+            </div>
           )}
 
           {selectedSynthesisAnchor && (
             <div className="game-board__overlay" aria-hidden="true">
               <div
-                className="synthesis-anchor-highlight"
+                className="board-cell-highlight"
                 style={getBoardCellOverlayStyle(selectedSynthesisAnchor.gridPosition)}
               />
             </div>

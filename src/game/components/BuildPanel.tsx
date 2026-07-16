@@ -235,7 +235,7 @@ export function BuildPanel({
       return (
         <button
           type="button"
-          className="action-deck__primary"
+          className="action-deck__primary action-deck__primary--action"
           onClick={onStartWave}
           disabled={disabledStart || !onStartWave}
         >
@@ -245,13 +245,13 @@ export function BuildPanel({
       )
     }
     if (gameStatus === 'playing') {
-      return <button type="button" className="action-deck__primary" onClick={onPause} disabled={!onPause}><PauseIcon weight="fill" />暂停</button>
+      return <button type="button" className="action-deck__primary action-deck__primary--action" onClick={onPause} disabled={!onPause}><PauseIcon weight="fill" />暂停</button>
     }
     if (gameStatus === 'paused') {
-      return <button type="button" className="action-deck__primary" onClick={onResume} disabled={!onResume}><PlayIcon weight="fill" />继续</button>
+      return <button type="button" className="action-deck__primary action-deck__primary--action" onClick={onResume} disabled={!onResume}><PlayIcon weight="fill" />继续</button>
     }
     if (gameStatus === 'game_over' || gameStatus === 'victory') {
-      return <button type="button" className="action-deck__primary" onClick={onReset} disabled={!onReset}><ArrowCounterClockwiseIcon weight="bold" />{copy.title}</button>
+      return <button type="button" className="action-deck__primary action-deck__primary--action" onClick={onReset} disabled={!onReset}><ArrowCounterClockwiseIcon weight="bold" />{copy.title}</button>
     }
     if (gameStatus === 'building') return null
     return (
@@ -268,6 +268,7 @@ export function BuildPanel({
         <span>{copy.eyebrow}</span>
         <strong>{copy.detail}</strong>
       </div>
+      {gameStatus !== 'resolving_hand' && renderPrimary()}
       {renderTiles()}
       {lastHonorGamble && gameStatus === 'ready' && (
         <p className={`mahjong-gamble-result mahjong-gamble-result--${lastHonorGamble}`}>
@@ -286,7 +287,7 @@ export function BuildPanel({
           onSelect={onSelectFunctionTile}
         />
       )}
-      {renderPrimary()}
+      {gameStatus === 'resolving_hand' && renderPrimary()}
       <div className="action-deck__meta" aria-label="建造资源">
         <span>剩余建造 {wood} 次</span>
         <span>金币 {gold}</span>
