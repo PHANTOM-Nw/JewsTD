@@ -29,10 +29,10 @@ interface BuildPanelProps {
   heldTileSuit: MahjongSuit | null
   functionTiles: MahjongHonor[]
   canGambleForHonor: boolean
+  honorGambleChance: number | null
   lastHonorGamble: 'success' | 'failure' | null
   currentWave?: number
   onTilePointerDown?: (tileId: string, pointerId: number) => void
-  onRevealHandSuits?: () => void
   onKeepHand?: (tileId: string) => void
   onGambleForHonor?: () => void
   onSelectFunctionTile?: (attachment: MahjongAttachment) => void
@@ -45,7 +45,7 @@ interface BuildPanelProps {
 function getPhaseCopy(
   gameStatus: GameStatus,
   placedCount: number,
-  isChoosingHandAction: boolean
+  canGambleForHonor: boolean
 ) {
   switch (gameStatus) {
     case 'building':
@@ -61,16 +61,16 @@ function getPhaseCopy(
         detail: `其余 ${ECONOMY_CONFIG.towersPerRound - 1} 张原地成为牌墙。`
       }
     case 'resolving_hand':
-      return isChoosingHandAction
+      return canGambleForHonor
         ? {
             eyebrow: '处理剩余牌',
-            title: '先选择处理方式',
-            detail: '两张新牌仍为暗牌；查看花色后不能再赌中發白。'
+            title: '保留手牌或赌功能牌',
+            detail: '三张花色已公开、点数保密：可留 1 张，或消耗三张按花色组成赌功能牌。'
           }
         : {
             eyebrow: '处理剩余牌',
             title: '保留 1 张手牌',
-            detail: '只公开花色，具体点数继续保持未知。'
+            detail: '花色已公开、点数保密；保留 1 张，其余回池。'
           }
     case 'ready':
       return {
@@ -143,10 +143,10 @@ export function BuildPanel({
   heldTileSuit,
   functionTiles,
   canGambleForHonor,
+  honorGambleChance,
   lastHonorGamble,
   currentWave = 0,
   onTilePointerDown,
-  onRevealHandSuits,
   onKeepHand,
   onGambleForHonor,
   onSelectFunctionTile,
@@ -193,50 +193,37 @@ export function BuildPanel({
     }
 
     if (gameStatus === 'resolving_hand') {
-      if (canGambleForHonor) {
-        return (
-          <div className="mahjong-hand-decision">
-            <div className="mahjong-hand-decision__tiles" aria-label="尚未公开的新牌">
-              {roundTiles.map(resource => (
-                <div key={resource.id}>
-                  <MahjongTile
-                    faceDown
-                    knownSuit={resource.visibility === 'suit' ? resource.suit : undefined}
-                    compact
-                  />
-                  <span>{resource.source === 'hand' ? '旧手牌' : '新暗牌'}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mahjong-hand-decision__actions" aria-label="选择剩余牌处理方式">
-              <button type="button" className="mahjong-inspect" onClick={onRevealHandSuits}>
-                看花色选牌
-                <small>公开两张新牌花色，再从三张中留一张</small>
-              </button>
-              <button type="button" className="mahjong-gamble" onClick={onGambleForHonor}>
-                赌中發白
-                <small>不看新牌花色，直接消耗三张进行判定</small>
-              </button>
-            </div>
-          </div>
-        )
-      }
-
+      const gamblePercent = Math.round((honorGambleChance ?? 0) * 100)
       return (
         <div className="mahjong-hand-resolution">
           <div className="mahjong-hand-resolution__choices" aria-label="选择下一回合手牌">
-            {roundTiles.map(resource => (
-              <button
-                key={resource.id}
-                type="button"
-                onClick={() => onKeepHand?.(resource.id)}
-                aria-label={`保留${resource.suit ? MAHJONG_SUIT_LABELS[resource.suit] : '未知'}花色手牌`}
-              >
-                <MahjongTile faceDown knownSuit={resource.suit} compact />
-                <span>{resource.suit ? `${MAHJONG_SUIT_LABELS[resource.suit]} · 点数未知` : '未知'}</span>
-              </button>
-            ))}
+            {roundTiles.map(resource => {
+              const suitLabel = resource.suit ? MAHJONG_SUIT_LABELS[resource.suit] : '未知'
+              return (
+                <button
+                  key={resource.id}
+                  type="button"
+                  onClick={() => onKeepHand?.(resource.id)}
+                  aria-label={`保留${suitLabel}花色手牌，点数未知`}
+                >
+                  <MahjongTile faceDown knownSuit={resource.suit} compact />
+                  <span>{suitLabel} · 点数未知</span>
+                  <small>{resource.source === 'hand' ? '旧手牌' : '新牌'}</small>
+                </button>
+              )
+            })}
           </div>
+          {canGambleForHonor && (
+            <button
+              type="button"
+              className="mahjong-gamble"
+              onClick={onGambleForHonor}
+              aria-label={`消耗三张牌赌中發白，成功率${gamblePercent}%，只按花色判定，不泄露点数`}
+            >
+              赌中發白（成功率 {gamblePercent}%）
+              <small>三张全部回池；成功等概率获得中／發／白之一</small>
+            </button>
+          )}
         </div>
       )
     }
@@ -285,7 +272,7 @@ export function BuildPanel({
       {renderTiles()}
       {lastHonorGamble && gameStatus === 'ready' && (
         <p className={`mahjong-gamble-result mahjong-gamble-result--${lastHonorGamble}`}>
-          {lastHonorGamble === 'success' ? '同花色成功，已获得功能牌。' : '花色不同，本次未获得功能牌。'}
+          {lastHonorGamble === 'success' ? '赌博成功，已获得一张功能牌。' : '赌博未中，本次没有获得功能牌。'}
         </p>
       )}
       {(gameStatus === 'ready' || gameStatus === 'playing' || gameStatus === 'paused') && heldTileSuit && (

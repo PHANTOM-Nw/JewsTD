@@ -45,7 +45,6 @@ export const TowerDefenseGame: React.FC = () => {
     clearPlacementPreview,
     placeTower,
     finalizeTowers,
-    revealMahjongHandSuits,
     keepMahjongHand,
     gambleForMahjongHonor,
     synthesizeMahjong,
@@ -337,10 +336,10 @@ export const TowerDefenseGame: React.FC = () => {
           heldTileSuit={uiState.heldTileSuit}
           functionTiles={uiState.functionTiles}
           canGambleForHonor={uiState.canGambleForHonor}
+          honorGambleChance={uiState.honorGambleChance}
           lastHonorGamble={uiState.lastHonorGamble}
           currentWave={uiState.wave}
           onTilePointerDown={beginTileDrag}
-          onRevealHandSuits={revealMahjongHandSuits}
           onKeepHand={keepMahjongHand}
           onGambleForHonor={gambleForMahjongHonor}
           onSelectFunctionTile={attachment => {

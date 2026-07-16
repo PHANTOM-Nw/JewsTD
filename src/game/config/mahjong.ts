@@ -8,6 +8,7 @@ import type {
   MahjongRoundTile,
   MahjongRoundTileView,
   MahjongSuit,
+  MahjongSuitMatchTier,
   MahjongTileId
 } from '../types/game'
 
@@ -378,6 +379,29 @@ export function canGambleForMahjongHonor(roundTiles: readonly MahjongRoundTile[]
     && roundTiles.filter(resource => resource.source === 'draw').length === 2
 }
 
+/** 越同花色成功率越高：3 花色 10%、2 同 35%、全同 75%。 */
+export const MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE: Record<MahjongSuitMatchTier, number> = {
+  mixed: .1,
+  twoMatching: .35,
+  allMatching: .75
+}
+
+export function classifyMahjongSuitMatch(
+  roundTiles: readonly MahjongRoundTile[]
+): MahjongSuitMatchTier {
+  const distinctSuits = new Set(roundTiles.map(resource => resource.tile.suit)).size
+  if (distinctSuits <= 1) return 'allMatching'
+  if (distinctSuits === 2) return 'twoMatching'
+  return 'mixed'
+}
+
+export function getMahjongHonorGambleChance(
+  roundTiles: readonly MahjongRoundTile[]
+): number {
+  if (!canGambleForMahjongHonor(roundTiles)) return 0
+  return MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE[classifyMahjongSuitMatch(roundTiles)]
+}
+
 export function resolveMahjongHonorGamble(
   roundTiles: readonly MahjongRoundTile[],
   random: () => number = Math.random
@@ -386,14 +410,14 @@ export function resolveMahjongHonorGamble(
     return { success: false, honor: null }
   }
 
-  const success = roundTiles.every(resource => (
-    resource.tile.suit === roundTiles[0].tile.suit
-  ))
-  if (!success) return { success: false, honor: null }
+  const chance = MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE[classifyMahjongSuitMatch(roundTiles)]
+  if (clampRandom(random()) >= chance) {
+    return { success: false, honor: null }
+  }
 
   const index = Math.min(
     MAHJONG_HONORS.length - 1,
-    Math.floor(Math.max(0, Math.min(.999999999, random())) * MAHJONG_HONORS.length)
+    Math.floor(clampRandom(random()) * MAHJONG_HONORS.length)
   )
   return { success: true, honor: MAHJONG_HONORS[index] }
 }

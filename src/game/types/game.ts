@@ -24,6 +24,8 @@ export type MahjongTileId = string
 export type MahjongFormation = 'single' | 'pair' | 'chow' | 'pung' | 'kong'
 export type MahjongAttachment = Exclude<MahjongHonor, 'white'>
 export type MahjongWallKind = 'tile' | 'pure'
+/** 剩余三张牌的花色组成分类，决定赌功能牌的成功率。 */
+export type MahjongSuitMatchTier = 'mixed' | 'twoMatching' | 'allMatching'
 
 /** The immutable roll created when a number tile is revealed as an active source. */
 export interface MahjongRandomStats {
@@ -319,5 +321,6 @@ export interface UIState {
   heldTileSuit: MahjongSuit | null
   functionTiles: MahjongHonor[]
   canGambleForHonor: boolean
+  honorGambleChance: number | null
   lastHonorGamble: 'success' | 'failure' | null
 }

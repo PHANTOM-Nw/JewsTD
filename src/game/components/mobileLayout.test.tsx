@@ -29,6 +29,7 @@ describe('mobile game layout', () => {
           heldTileSuit: null,
           functionTiles: [],
           canGambleForHonor: false,
+          honorGambleChance: null,
           lastHonorGamble: null
         }}
         onResetGame={vi.fn()}
@@ -55,6 +56,7 @@ describe('mobile game layout', () => {
         heldTileSuit={null}
         functionTiles={[]}
         canGambleForHonor={false}
+        honorGambleChance={null}
         lastHonorGamble={null}
         currentWave={0}
       />

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MAHJONG_FORMATION_MULTIPLIERS,
   beginMahjongRound,
+  canGambleForMahjongHonor,
   createMahjongRandomStats,
   createMahjongTilePool
 } from '../config/mahjong'
@@ -581,6 +582,50 @@ describe('production Mahjong ownership orchestration', () => {
     roundTiles = nextRound.roundTiles
     const finalAudit = expectConserved(universe, state, roundTiles, heldTile)
     expect(finalAudit).toMatchObject({
+      expectedEntityCount: 108,
+      ownedEntityCount: 108,
+      duplicates: [],
+      missing: [],
+      unknown: [],
+      conserved: true
+    })
+  })
+})
+
+describe('Mahjong honor gamble ledger', () => {
+  it('returns all three staked tiles to the pool and conserves 108 entities', () => {
+    let tileSequence = 0
+    const universe = createMahjongTilePool(() => `entity-${tileSequence++}`)
+    // 上一回合留下的手牌加上本回合摸的五张，落三张后只剩 1 手牌 + 2 暗牌可赌。
+    const round = beginMahjongRound(universe.slice(1), universe[0], () => 0)
+    const stakedTiles = round.roundTiles.slice(0, 3)
+    const poolBeforeGamble = [
+      ...round.pool,
+      ...round.roundTiles.slice(3).map(resource => resource.tile)
+    ]
+    let roundTiles: MahjongRoundTile[] = stakedTiles
+    let heldTile: MahjongNumberTile | null = null
+    const state = createState([], { pool: poolBeforeGamble, functionTiles: [] })
+
+    expect(canGambleForMahjongHonor(roundTiles)).toBe(true)
+    expectConserved(universe, state, roundTiles, heldTile)
+
+    // 模拟 gambleForMahjongHonor 的资源结算：三张实体回池、heldTile 归零、得到一张功能牌。
+    state.pool = [...state.pool, ...roundTiles.map(resource => resource.tile)]
+    state.functionTiles = [...state.functionTiles, 'red']
+    roundTiles = []
+    heldTile = null
+
+    expect(state.functionTiles).toEqual(['red'])
+    const audit = auditMahjongOwnership({
+      universe,
+      pool: state.pool,
+      roundTiles,
+      heldTile,
+      towers: state.towers,
+      grid: state.grid
+    })
+    expect(audit).toMatchObject({
       expectedEntityCount: 108,
       ownedEntityCount: 108,
       duplicates: [],

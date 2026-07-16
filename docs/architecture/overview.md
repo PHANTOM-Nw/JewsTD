@@ -40,7 +40,7 @@ main.tsx
 - `roundTiles`：本回合新牌与可能带入的旧手牌，内部保留完整实体，向 UI 只投影允许公开的信息。
 - `heldTile`：最多一张跨回合手牌。
 - `functionTiles`：通过赌博获得、尚未使用的中發白。
-- `handResolutionMode`：剩余牌正在选择处理方式，或已经选择看花色留牌。
+- `resolvingHand`：布尔标记，表示当前处于 `resolving_hand` 阶段——进入即公开剩余牌花色，等待玩家留牌或赌博。
 
 组件不能直接修改这些状态。`TowerDefenseGame` 只调用引擎动作，例如拖放、激活、留牌、赌博、合成、中发附着、拆墙、开波、暂停和重开。
 

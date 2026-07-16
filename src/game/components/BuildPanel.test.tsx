@@ -34,7 +34,8 @@ function findElement(
   return match
 }
 
-const choosingTiles: MahjongRoundTileView[] = [
+// 进入 resolving_hand 后所有剩余牌的花色都已公开，点数永远保密。
+const gambleTiles: MahjongRoundTileView[] = [
   {
     id: 'characters-2-1',
     source: 'hand',
@@ -44,39 +45,32 @@ const choosingTiles: MahjongRoundTileView[] = [
   {
     id: 'bamboo-5-1',
     source: 'draw',
-    visibility: 'hidden'
-  },
-  {
-    id: 'dots-8-1',
-    source: 'draw',
-    visibility: 'hidden'
-  }
-]
-
-const keepingTiles: MahjongRoundTileView[] = [
-  choosingTiles[0],
-  {
-    ...choosingTiles[1],
     visibility: 'suit',
     suit: 'bamboo'
   },
   {
-    ...choosingTiles[2],
+    id: 'dots-8-1',
+    source: 'draw',
     visibility: 'suit',
     suit: 'dots'
   }
 ]
 
+const keepOnlyTiles: MahjongRoundTileView[] = [
+  gambleTiles[1],
+  gambleTiles[2]
+]
+
 function renderHandPanel({
   roundTiles,
   canGambleForHonor,
-  onRevealHandSuits,
+  honorGambleChance,
   onKeepHand,
   onGambleForHonor
 }: {
   roundTiles: MahjongRoundTileView[]
   canGambleForHonor: boolean
-  onRevealHandSuits?: () => void
+  honorGambleChance: number | null
   onKeepHand?: (tileId: string) => void
   onGambleForHonor?: () => void
 }) {
@@ -89,76 +83,23 @@ function renderHandPanel({
     heldTileSuit: null,
     functionTiles: [],
     canGambleForHonor,
+    honorGambleChance,
     lastHonorGamble: null,
-    onRevealHandSuits,
     onKeepHand,
     onGambleForHonor
   })
 }
 
 describe('BuildPanel hand resolution choice', () => {
-  it('keeps both new suits hidden and requires a strategy choice before keeping a tile', () => {
-    const revealSuits = vi.fn()
+  it('reveals every remaining suit while hiding ranks and offers the gamble by composition', () => {
     const keepHand = vi.fn()
     const gamble = vi.fn()
     const panel = renderHandPanel({
-      roundTiles: choosingTiles,
+      roundTiles: gambleTiles,
       canGambleForHonor: true,
-      onRevealHandSuits: revealSuits,
+      honorGambleChance: .1,
       onKeepHand: keepHand,
       onGambleForHonor: gamble
-    })
-    const markup = renderToStaticMarkup(panel)
-
-    expect(markup).toContain('选择剩余牌处理方式')
-    expect(markup).toContain('看花色选牌')
-    expect(markup).toContain('赌中發白')
-    expect(markup.match(/新暗牌/g)).toHaveLength(2)
-    expect(markup).not.toContain('选择下一回合手牌')
-    expect(markup).not.toContain('条 · 点数未知')
-    expect(markup).not.toContain('筒 · 点数未知')
-    expect(findElement(panel, element => (
-      element.props['aria-label']?.startsWith('保留') ?? false
-    ))).toBeNull()
-
-    const inspectButton = findElement(panel, element => (
-      element.props.className === 'mahjong-inspect'
-    ))
-    inspectButton?.props.onClick?.()
-
-    expect(revealSuits).toHaveBeenCalledOnce()
-    expect(keepHand).not.toHaveBeenCalled()
-    expect(gamble).not.toHaveBeenCalled()
-  })
-
-  it('routes the gamble choice directly to resolution without revealing or keeping first', () => {
-    const revealSuits = vi.fn()
-    const keepHand = vi.fn()
-    const gamble = vi.fn()
-    const panel = renderHandPanel({
-      roundTiles: choosingTiles,
-      canGambleForHonor: true,
-      onRevealHandSuits: revealSuits,
-      onKeepHand: keepHand,
-      onGambleForHonor: gamble
-    })
-    const gambleButton = findElement(panel, element => (
-      element.props.className === 'mahjong-gamble'
-    ))
-
-    gambleButton?.props.onClick?.()
-
-    expect(gamble).toHaveBeenCalledOnce()
-    expect(revealSuits).not.toHaveBeenCalled()
-    expect(keepHand).not.toHaveBeenCalled()
-  })
-
-  it('reveals all three suits and enables keeping only after choosing inspection', () => {
-    const keepHand = vi.fn()
-    const panel = renderHandPanel({
-      roundTiles: keepingTiles,
-      canGambleForHonor: false,
-      onKeepHand: keepHand
     })
     const markup = renderToStaticMarkup(panel)
 
@@ -166,16 +107,72 @@ describe('BuildPanel hand resolution choice', () => {
     expect(markup).toContain('万 · 点数未知')
     expect(markup).toContain('条 · 点数未知')
     expect(markup).toContain('筒 · 点数未知')
-    expect(markup).not.toContain('看花色选牌')
-    expect(markup).not.toContain('赌中發白')
+    expect(markup).toContain('赌中發白（成功率 10%）')
+    expect(markup.match(/新牌/g)).toHaveLength(2)
+    expect(markup).toContain('旧手牌')
+    // 点数信息边界：没有任何正面牌，点数永远只以「未知」呈现。
+    expect(markup).not.toContain('mahjong-tile--face')
 
     const keepBamboo = findElement(panel, element => (
-      element.props['aria-label'] === '保留条花色手牌'
+      element.props['aria-label'] === '保留条花色手牌，点数未知'
     ))
     keepBamboo?.props.onClick?.()
 
     expect(keepHand).toHaveBeenCalledOnce()
     expect(keepHand).toHaveBeenCalledWith('bamboo-5-1')
+
+    const gambleButton = findElement(panel, element => (
+      element.props.className === 'mahjong-gamble'
+    ))
+    gambleButton?.props.onClick?.()
+
+    expect(gamble).toHaveBeenCalledOnce()
+  })
+
+  it('shows the raised success rate for a two-matching composition', () => {
+    const panel = renderHandPanel({
+      roundTiles: gambleTiles,
+      canGambleForHonor: true,
+      honorGambleChance: .35,
+      onGambleForHonor: vi.fn()
+    })
+    const markup = renderToStaticMarkup(panel)
+
+    expect(markup).toContain('赌中發白（成功率 35%）')
+    expect(markup).toContain('三张全部回池；成功等概率获得中／發／白之一')
+  })
+
+  it('drops the gamble when only two fresh tiles remain and still keeps ranks hidden', () => {
+    const keepHand = vi.fn()
+    const gamble = vi.fn()
+    const panel = renderHandPanel({
+      roundTiles: keepOnlyTiles,
+      canGambleForHonor: false,
+      honorGambleChance: null,
+      onKeepHand: keepHand,
+      onGambleForHonor: gamble
+    })
+    const markup = renderToStaticMarkup(panel)
+
+    expect(markup).toContain('选择下一回合手牌')
+    expect(markup).toContain('条 · 点数未知')
+    expect(markup).toContain('筒 · 点数未知')
+    expect(markup).not.toContain('赌中發白')
+    expect(markup).not.toContain('mahjong-tile--face')
+
+    const gambleButton = findElement(panel, element => (
+      element.props.className === 'mahjong-gamble'
+    ))
+    expect(gambleButton).toBeNull()
+
+    const keepDots = findElement(panel, element => (
+      element.props['aria-label'] === '保留筒花色手牌，点数未知'
+    ))
+    keepDots?.props.onClick?.()
+
+    expect(keepHand).toHaveBeenCalledOnce()
+    expect(keepHand).toHaveBeenCalledWith('dots-8-1')
+    expect(gamble).not.toHaveBeenCalled()
   })
 })
 
@@ -191,6 +188,7 @@ describe('BuildPanel function tile actions', () => {
       heldTileSuit: null,
       functionTiles: ['red', 'green', 'white'],
       canGambleForHonor: false,
+      honorGambleChance: null,
       lastHonorGamble: null,
       onSelectFunctionTile: selectFunctionTile
     })
@@ -226,6 +224,7 @@ describe('BuildPanel function tile actions', () => {
         heldTileSuit={null}
         functionTiles={['red', 'white']}
         canGambleForHonor={false}
+        honorGambleChance={null}
         lastHonorGamble={null}
         onSelectFunctionTile={vi.fn()}
       />
