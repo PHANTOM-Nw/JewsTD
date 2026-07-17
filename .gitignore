@@ -16,6 +16,7 @@ dist-ssr
 
 # Agent instruction files (local only)
 CLAUDE.md
+.claude/
 
 # Editor directories and files
 .vscode/*
