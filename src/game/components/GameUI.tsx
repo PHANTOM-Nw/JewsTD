@@ -5,6 +5,7 @@ import {
   CoinsIcon,
   CornersInIcon,
   CornersOutIcon,
+  GearSixIcon,
   HammerIcon,
   HeartIcon,
   StackIcon,
@@ -13,12 +14,16 @@ import {
   WavesIcon
 } from '@phosphor-icons/react'
 import { ECONOMY_CONFIG } from '../config/economy'
+import { getNextCombatSpeed } from '../config/gameSpeed'
+import type { CombatSpeed } from '../config/gameSpeed'
 import { WAVES } from '../config/waves'
 import { soundManager } from '../services/audio'
 import type { UIState } from '../types/game'
 
 interface GameUIProps {
   uiState: UIState
+  combatSpeed: CombatSpeed
+  onCycleCombatSpeed: () => void
   onResetGame: () => void
   phaseHint?: ReactNode
   fullscreen?: {
@@ -49,8 +54,36 @@ function ResourceCard({ className, label, value, icon, action }: ResourceCardPro
   )
 }
 
+export function CombatSpeedControl({
+  combatSpeed,
+  onCycle
+}: {
+  combatSpeed: CombatSpeed
+  onCycle: () => void
+}) {
+  const nextSpeed = getNextCombatSpeed(combatSpeed)
+  const label = `当前战斗速度 ${combatSpeed} 倍，点击切换到 ${nextSpeed} 倍`
+
+  return (
+    <button
+      type="button"
+      className="icon-button game-ui__speed"
+      onClick={onCycle}
+      aria-label={label}
+      title={label}
+    >
+      <GearSixIcon weight="bold" />
+      <strong className="game-ui__speed-value" aria-hidden="true">
+        {combatSpeed}×
+      </strong>
+    </button>
+  )
+}
+
 export function GameUI({
   uiState,
+  combatSpeed,
+  onCycleCombatSpeed,
   onResetGame,
   phaseHint,
   fullscreen
@@ -81,6 +114,10 @@ export function GameUI({
                 : <CornersOutIcon weight="bold" />}
             </button>
           )}
+          <CombatSpeedControl
+            combatSpeed={combatSpeed}
+            onCycle={onCycleCombatSpeed}
+          />
           <button
             type="button"
             className="icon-button"

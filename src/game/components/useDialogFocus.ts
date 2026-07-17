@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
 
-export function useDialogFocus(onClose: () => void) {
+export function useDialogFocus(
+  onClose: () => void,
+  { trapFocus = true }: { trapFocus?: boolean } = {}
+) {
   const dialogRef = useRef<HTMLElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -16,7 +19,7 @@ export function useDialogFocus(onClose: () => void) {
         onClose()
         return
       }
-      if (event.key !== 'Tab' || !dialogRef.current) return
+      if (!trapFocus || event.key !== 'Tab' || !dialogRef.current) return
 
       const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
         'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])'
@@ -38,7 +41,7 @@ export function useDialogFocus(onClose: () => void) {
       document.removeEventListener('keydown', handleKeyDown)
       previousFocus?.focus()
     }
-  }, [onClose])
+  }, [onClose, trapFocus])
 
   return { dialogRef, closeButtonRef }
 }

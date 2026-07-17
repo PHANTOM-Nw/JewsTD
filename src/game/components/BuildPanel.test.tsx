@@ -35,7 +35,7 @@ function findElement(
 }
 
 // 进入 resolving_hand 后所有剩余牌的花色都已公开，点数永远保密。
-const gambleTiles: MahjongRoundTileView[] = [
+const handTiles: MahjongRoundTileView[] = [
   {
     id: 'characters-2-1',
     source: 'hand',
@@ -56,61 +56,39 @@ const gambleTiles: MahjongRoundTileView[] = [
   }
 ]
 
-const twoMatchingGambleTiles: MahjongRoundTileView[] = [
-  gambleTiles[0],
-  {
-    id: 'two-matching-draw',
-    source: 'draw',
-    visibility: 'suit',
-    suit: 'characters'
-  },
-  gambleTiles[2]
-]
-
 const keepOnlyTiles: MahjongRoundTileView[] = [
-  gambleTiles[1],
-  gambleTiles[2]
+  handTiles[1],
+  handTiles[2]
 ]
 
 function renderHandPanel({
   roundTiles,
-  canGambleForHonor,
-  honorGambleChance,
-  onKeepHand,
-  onGambleForHonor
+  honorDrawScheduled,
+  onKeepHand
 }: {
   roundTiles: MahjongRoundTileView[]
-  canGambleForHonor: boolean
-  honorGambleChance: number | null
+  honorDrawScheduled: boolean
   onKeepHand?: (tileId: string) => void
-  onGambleForHonor?: () => void
 }) {
   return BuildPanel({
-    wood: 0,
-    gold: 50,
     placedCount: 3,
     gameStatus: 'resolving_hand',
     roundTiles,
     heldTileSuit: null,
     functionTiles: [],
-    canGambleForHonor,
-    honorGambleChance,
-    lastHonorGamble: null,
-    onKeepHand,
-    onGambleForHonor
+    honorDrawScheduled,
+    lastHonorDraw: null,
+    onKeepHand
   })
 }
 
-describe('BuildPanel hand resolution choice', () => {
-  it('reveals every remaining suit while hiding ranks and offers the gamble by composition', () => {
+describe('BuildPanel hand resolution and scheduled honor draw', () => {
+  it('reveals every remaining suit, keeps ranks hidden and announces the independent draw', () => {
     const keepHand = vi.fn()
-    const gamble = vi.fn()
     const panel = renderHandPanel({
-      roundTiles: gambleTiles,
-      canGambleForHonor: true,
-      honorGambleChance: .5,
-      onKeepHand: keepHand,
-      onGambleForHonor: gamble
+      roundTiles: handTiles,
+      honorDrawScheduled: true,
+      onKeepHand: keepHand
     })
     const markup = renderToStaticMarkup(panel)
 
@@ -118,7 +96,8 @@ describe('BuildPanel hand resolution choice', () => {
     expect(markup).toContain('万 · 点数未知')
     expect(markup).toContain('条 · 点数未知')
     expect(markup).toContain('筒 · 点数未知')
-    expect(markup).toContain('赌中發白（成功率 50%）')
+    expect(markup).toContain('选定手牌后自动进行 50% 功能牌抽取')
+    expect(markup).toContain('手牌不会被消耗')
     expect(markup.match(/新牌/g)).toHaveLength(2)
     expect(markup).toContain('旧手牌')
     // 点数信息边界：没有任何正面牌，点数永远只以「未知」呈现。
@@ -131,37 +110,28 @@ describe('BuildPanel hand resolution choice', () => {
 
     expect(keepHand).toHaveBeenCalledOnce()
     expect(keepHand).toHaveBeenCalledWith('bamboo-5-1')
-
-    const gambleButton = findElement(panel, element => (
-      element.props.className === 'mahjong-gamble'
-    ))
-    gambleButton?.props.onClick?.()
-
-    expect(gamble).toHaveBeenCalledOnce()
+    expect(markup).not.toContain('赌中發白')
+    expect(markup).not.toContain('三张全部回池')
   })
 
-  it('shows the raised success rate for a two-matching composition', () => {
+  it('keeps ordinary hand resolution free of an honor draw notice on odd rounds', () => {
     const panel = renderHandPanel({
-      roundTiles: twoMatchingGambleTiles,
-      canGambleForHonor: true,
-      honorGambleChance: .75,
-      onGambleForHonor: vi.fn()
+      roundTiles: keepOnlyTiles,
+      honorDrawScheduled: false
     })
     const markup = renderToStaticMarkup(panel)
 
-    expect(markup).toContain('赌中發白（成功率 75%）')
-    expect(markup).toContain('三张全部回池；成功等概率获得中／發／白之一')
+    expect(markup).toContain('选择下一回合手牌')
+    expect(markup).not.toContain('功能牌抽取')
+    expect(markup).not.toContain('赌')
   })
 
-  it('drops the gamble when only two fresh tiles remain and still keeps ranks hidden', () => {
+  it('keeps selection working when only two fresh tiles remain', () => {
     const keepHand = vi.fn()
-    const gamble = vi.fn()
     const panel = renderHandPanel({
       roundTiles: keepOnlyTiles,
-      canGambleForHonor: false,
-      honorGambleChance: null,
-      onKeepHand: keepHand,
-      onGambleForHonor: gamble
+      honorDrawScheduled: true,
+      onKeepHand: keepHand
     })
     const markup = renderToStaticMarkup(panel)
 
@@ -171,11 +141,6 @@ describe('BuildPanel hand resolution choice', () => {
     expect(markup).not.toContain('赌中發白')
     expect(markup).not.toContain('mahjong-tile--face')
 
-    const gambleButton = findElement(panel, element => (
-      element.props.className === 'mahjong-gamble'
-    ))
-    expect(gambleButton).toBeNull()
-
     const keepDots = findElement(panel, element => (
       element.props['aria-label'] === '保留筒花色手牌，点数未知'
     ))
@@ -183,7 +148,28 @@ describe('BuildPanel hand resolution choice', () => {
 
     expect(keepHand).toHaveBeenCalledOnce()
     expect(keepHand).toHaveBeenCalledWith('dots-8-1')
-    expect(gamble).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['success', '功能牌抽取成功，已获得一张中／發／白。'],
+    ['failure', '功能牌抽取未中，本次没有获得功能牌。']
+  ] as const)('shows the automatic draw %s result without gambling copy', (result, copy) => {
+    const markup = renderToStaticMarkup(
+      <BuildPanel
+        placedCount={3}
+        gameStatus="ready"
+        roundTiles={[]}
+        heldTileSuit="characters"
+        functionTiles={result === 'success' ? ['red'] : []}
+        honorDrawScheduled={false}
+        lastHonorDraw={result}
+      />
+    )
+
+    expect(markup).toContain(copy)
+    expect(markup).toContain(`mahjong-honor-draw-result--${result}`)
+    expect(markup).not.toContain('mahjong-gamble')
+    expect(markup).not.toContain('赌博')
   })
 })
 
@@ -191,16 +177,13 @@ describe('BuildPanel function tile actions', () => {
   it('offers accessible red and green target actions and a clickable white detail entry', () => {
     const selectFunctionTile = vi.fn()
     const panel = BuildPanel({
-      wood: 3,
-      gold: 50,
       placedCount: 0,
       gameStatus: 'building',
       roundTiles: [],
       heldTileSuit: null,
       functionTiles: ['red', 'green', 'white'],
-      canGambleForHonor: false,
-      honorGambleChance: null,
-      lastHonorGamble: null,
+      honorDrawScheduled: false,
+      lastHonorDraw: null,
       onSelectFunctionTile: selectFunctionTile
     })
     const markup = renderToStaticMarkup(panel)
@@ -233,16 +216,13 @@ describe('BuildPanel function tile actions', () => {
   it('keeps target actions enabled in ready before the wave starts', () => {
     const markup = renderToStaticMarkup(
       <BuildPanel
-        wood={0}
-        gold={50}
         placedCount={3}
         gameStatus="ready"
         roundTiles={[]}
         heldTileSuit={null}
         functionTiles={['red', 'white']}
-        canGambleForHonor={false}
-        honorGambleChance={null}
-        lastHonorGamble={null}
+        honorDrawScheduled={false}
+        lastHonorDraw={null}
         onSelectFunctionTile={vi.fn()}
       />
     )
@@ -265,16 +245,13 @@ describe('BuildPanel function tile actions', () => {
 describe('BuildPanel primary action by phase', () => {
   const renderPhase = (gameStatus: GameStatus) => renderToStaticMarkup(
     <BuildPanel
-      wood={0}
-      gold={50}
       placedCount={3}
       gameStatus={gameStatus}
       roundTiles={[]}
       heldTileSuit={null}
       functionTiles={[]}
-      canGambleForHonor={false}
-      honorGambleChance={null}
-      lastHonorGamble={null}
+      honorDrawScheduled={false}
+      lastHonorDraw={null}
       currentWave={0}
       onStartWave={vi.fn()}
       onPause={vi.fn()}
@@ -319,12 +296,12 @@ describe('BuildPanel primary action by phase', () => {
 describe('GamePhaseHint compact copy', () => {
   const renderHint = (
     gameStatus: GameStatus,
-    canGambleForHonor = false
+    honorDrawScheduled = false
   ) => renderToStaticMarkup(
     <GamePhaseHint
       placedCount={2}
       gameStatus={gameStatus}
-      canGambleForHonor={canGambleForHonor}
+      honorDrawScheduled={honorDrawScheduled}
     />
   )
 
@@ -345,12 +322,13 @@ describe('GamePhaseHint compact copy', () => {
     expect(markup).toContain('aria-live="polite"')
   })
 
-  it('keeps hand ranks private in both hand-resolution variants', () => {
+  it('keeps hand ranks private while announcing the scheduled independent draw', () => {
     const keepMarkup = renderHint('resolving_hand')
-    const gambleMarkup = renderHint('resolving_hand', true)
+    const drawMarkup = renderHint('resolving_hand', true)
 
     expect(keepMarkup).toContain('看花色留 1 张，点数仍保密')
-    expect(gambleMarkup).toContain('点数保密：留 1 张或三张赌功能牌')
-    expect(`${keepMarkup}${gambleMarkup}`).not.toMatch(/[一二三四五六七八九][万条筒]/)
+    expect(drawMarkup).toContain('留牌后自动以 50% 概率抽取中／發／白')
+    expect(drawMarkup).not.toContain('或赌')
+    expect(`${keepMarkup}${drawMarkup}`).not.toMatch(/[一二三四五六七八九][万条筒]/)
   })
 })

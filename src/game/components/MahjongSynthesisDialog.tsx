@@ -149,7 +149,7 @@ export function MahjongSynthesisDialog({
       : null
   )
   const [submissionMessage, setSubmissionMessage] = useState('')
-  const { dialogRef, closeButtonRef } = useDialogFocus(onClose)
+  const { dialogRef, closeButtonRef } = useDialogFocus(onClose, { trapFocus: false })
 
   const recipe = createRecipe(formation, chowStart)
   const currentOptions = synthesisOptions.filter(option => (
@@ -256,12 +256,14 @@ export function MahjongSynthesisDialog({
     : null
 
   return (
-    <div className="synthesis-dialog-backdrop" role="presentation">
+    <div
+      className="synthesis-dialog-backdrop synthesis-dialog-backdrop--board-visible"
+      role="presentation"
+    >
       <section
         ref={dialogRef}
         className="synthesis-dialog mahjong-synthesis-dialog"
         role="dialog"
-        aria-modal="true"
         aria-labelledby="mahjong-synthesis-title"
       >
         <header className="synthesis-dialog__header">

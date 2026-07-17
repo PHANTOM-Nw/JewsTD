@@ -2,23 +2,22 @@ import { describe, expect, it } from 'vitest'
 import type { MahjongNumberTile, MahjongRoundTile } from '../types/game'
 import {
   beginMahjongRound,
-  canGambleForMahjongHonor,
-  classifyMahjongSuitMatch,
   createMahjongRandomStats,
   createMahjongTilePool,
-  getMahjongHonorGambleChance,
+  isMahjongHonorDrawRound,
   MAHJONG_BAMBOO_LAYOUTS,
   MAHJONG_DOT_LAYOUTS,
   MAHJONG_DRAWS_PER_ROUND,
   MAHJONG_FORMATION_MECHANICS,
   MAHJONG_FORMATION_MULTIPLIERS,
   MAHJONG_GREEN_ATTACHMENT_CONFIG,
-  MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE,
+  MAHJONG_HONOR_DRAW_INTERVAL_ROUNDS,
+  MAHJONG_HONOR_DRAW_SUCCESS_CHANCE,
   MAHJONG_RANKS,
   MAHJONG_RED_ATTACHMENT_CONFIG,
   MAHJONG_SUIT_COMBAT_CONFIG,
   MAHJONG_WHITE_CATALYST_CONFIG,
-  resolveMahjongHonorGamble,
+  resolveMahjongHonorDraw,
   toMahjongRoundTileViews
 } from './mahjong'
 
@@ -276,109 +275,49 @@ describe('mahjong face layouts', () => {
   })
 })
 
-describe('mahjong honor gamble', () => {
-  const pool = createMahjongTilePool()
-  const characters = pool.filter(tile => tile.suit === 'characters')
-  const bamboo = pool.filter(tile => tile.suit === 'bamboo')
-  const dots = pool.filter(tile => tile.suit === 'dots')
-
-  const allMatchingTiles = [
-    toRoundTile(characters[0], 'hand'),
-    toRoundTile(characters[1], 'draw'),
-    toRoundTile(characters[2], 'draw')
-  ]
-  const twoMatchingTiles = [
-    toRoundTile(characters[0], 'hand'),
-    toRoundTile(characters[1], 'draw'),
-    toRoundTile(bamboo[0], 'draw')
-  ]
-  const mixedTiles = [
-    toRoundTile(characters[0], 'hand'),
-    toRoundTile(bamboo[0], 'draw'),
-    toRoundTile(dots[0], 'draw')
-  ]
-
+describe('scheduled Mahjong honor draw', () => {
   function sequenceRandom(values: readonly number[]): () => number {
     let index = 0
     return () => values[index++] ?? 0
   }
 
-  it('classifies the suit match tier by the number of distinct suits', () => {
-    expect(classifyMahjongSuitMatch(allMatchingTiles)).toBe('allMatching')
-    expect(classifyMahjongSuitMatch(twoMatchingTiles)).toBe('twoMatching')
-    expect(classifyMahjongSuitMatch(mixedTiles)).toBe('mixed')
+  it('schedules only build rounds 2, 4, 6, 8, 10 and 12', () => {
+    expect(MAHJONG_HONOR_DRAW_INTERVAL_ROUNDS).toBe(2)
+    expect(Array.from({ length: 12 }, (_, index) => index + 1)
+      .filter(isMahjongHonorDrawRound)).toEqual([2, 4, 6, 8, 10, 12])
+    expect(isMahjongHonorDrawRound(0)).toBe(false)
+    expect(isMahjongHonorDrawRound(2.5)).toBe(false)
   })
 
-  it('exposes the tiered success chances', () => {
-    expect(MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE).toEqual({
-      mixed: .5,
-      twoMatching: .75,
-      allMatching: 1
-    })
-  })
-
-  it('returns the composition chance only when the gamble is available', () => {
-    expect(getMahjongHonorGambleChance(allMatchingTiles)).toBe(1)
-    expect(getMahjongHonorGambleChance(twoMatchingTiles)).toBe(.75)
-    expect(getMahjongHonorGambleChance(mixedTiles)).toBe(.5)
-    expect(getMahjongHonorGambleChance(allMatchingTiles.slice(0, 2))).toBe(0)
-    expect(getMahjongHonorGambleChance(
-      allMatchingTiles.map(resource => ({ ...resource, source: 'draw' as const }))
-    )).toBe(0)
-  })
-
-  it('awards an equally likely honor when the all-matching roll wins', () => {
-    expect(canGambleForMahjongHonor(allMatchingTiles)).toBe(true)
-    expect(resolveMahjongHonorGamble(allMatchingTiles, sequenceRandom([.999999999, 0]))).toEqual({
+  it('uses a fixed 50% boundary independent of number tiles', () => {
+    expect(MAHJONG_HONOR_DRAW_SUCCESS_CHANCE).toBe(.5)
+    expect(resolveMahjongHonorDraw(sequenceRandom([.49, .999999999]))).toEqual({
       success: true,
-      honor: 'red'
+      honor: 'white'
+    })
+    expect(resolveMahjongHonorDraw(sequenceRandom([.5]))).toEqual({
+      success: false,
+      honor: null
     })
   })
 
-  it('always succeeds for all-matching tiles and consumes the honor roll', () => {
+  it.each([
+    [0, 'red'],
+    [.34, 'green'],
+    [.999999999, 'white']
+  ] as const)('awards %s of the honor interval as %s after success', (honorRoll, honor) => {
+    expect(resolveMahjongHonorDraw(sequenceRandom([0, honorRoll]))).toEqual({
+      success: true,
+      honor
+    })
+  })
+
+  it('does not consume an honor-selection roll after failure', () => {
     let calls = 0
-    const random = () => {
+    expect(resolveMahjongHonorDraw(() => {
       calls += 1
-      return 1
-    }
-
-    expect(resolveMahjongHonorGamble(allMatchingTiles, random)).toEqual({
-      success: true,
-      honor: 'white'
-    })
-    expect(calls).toBe(2)
-  })
-
-  it('resolves a two-matching gamble against its 75% threshold', () => {
-    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.74, .5]))).toEqual({
-      success: true,
-      honor: 'green'
-    })
-    expect(resolveMahjongHonorGamble(twoMatchingTiles, sequenceRandom([.75]))).toEqual({
-      success: false,
-      honor: null
-    })
-  })
-
-  it('resolves a fully mixed gamble against its 50% threshold', () => {
-    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.49, .999999999]))).toEqual({
-      success: true,
-      honor: 'white'
-    })
-    expect(resolveMahjongHonorGamble(mixedTiles, sequenceRandom([.5]))).toEqual({
-      success: false,
-      honor: null
-    })
-  })
-
-  it.each<[MahjongRoundTile[]]>([
-    [allMatchingTiles.slice(0, 2)],
-    [allMatchingTiles.map(resource => ({ ...resource, source: 'draw' as const }))]
-  ])('rejects an invalid gamble input', invalidRoundTiles => {
-    expect(canGambleForMahjongHonor(invalidRoundTiles)).toBe(false)
-    expect(resolveMahjongHonorGamble(invalidRoundTiles, () => 0)).toEqual({
-      success: false,
-      honor: null
-    })
+      return .5
+    })).toEqual({ success: false, honor: null })
+    expect(calls).toBe(1)
   })
 })

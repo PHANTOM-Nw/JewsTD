@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { ECONOMY_CONFIG } from '../config/economy'
 import { BuildPanel, GamePhaseHint } from './BuildPanel'
-import { GameUI } from './GameUI'
+import { CombatSpeedControl, GameUI } from './GameUI'
 
 vi.mock('../services/audio', () => ({
   soundManager: { setEnabled: vi.fn() }
@@ -28,16 +28,17 @@ describe('mobile game layout', () => {
           roundTiles: [],
           heldTileSuit: null,
           functionTiles: [],
-          canGambleForHonor: false,
-          honorGambleChance: null,
-          lastHonorGamble: null
+          honorDrawScheduled: false,
+          lastHonorDraw: null
         }}
+        combatSpeed={1}
+        onCycleCombatSpeed={vi.fn()}
         onResetGame={vi.fn()}
         phaseHint={(
           <GamePhaseHint
             placedCount={1}
             gameStatus="building"
-            canGambleForHonor={false}
+            honorDrawScheduled={false}
           />
         )}
         fullscreen={{
@@ -62,6 +63,8 @@ describe('mobile game layout', () => {
     expect(markup).toContain('game-phase-hint')
     expect(markup.indexOf('game-phase-hint')).toBeLessThan(markup.indexOf('game-ui__utilities'))
     expect(markup).toContain('aria-label="进入全屏"')
+    expect(markup).toContain('当前战斗速度 1 倍，点击切换到 1.5 倍')
+    expect(markup).toContain('1×')
     expect(markup).toContain('aria-label="重新开始"')
     expect(markup).toMatch(/aria-label="(关闭音效|开启音效)"/)
   })
@@ -69,23 +72,19 @@ describe('mobile game layout', () => {
   it('derives the three-build action deck from the economy config', () => {
     const markup = renderToStaticMarkup(
       <BuildPanel
-        wood={1}
-        gold={20}
         placedCount={2}
         gameStatus="building"
         roundTiles={[]}
         heldTileSuit={null}
         functionTiles={[]}
-        canGambleForHonor={false}
-        honorGambleChance={null}
-        lastHonorGamble={null}
+        honorDrawScheduled={false}
+        lastHonorDraw={null}
         currentWave={0}
       />
     )
     const gameStyles = readFileSync(new URL('./TowerDefenseGame.css', import.meta.url), 'utf8')
 
     expect(ECONOMY_CONFIG.towersPerRound).toBe(3)
-    expect(markup).toContain('剩余建造 1 次')
     expect(markup).not.toContain('game-phase-hint')
     expect(markup).not.toContain('清牌墙')
     expect(gameStyles).toMatch(/width:\s*min\(100%,\s*430px\)/)
@@ -108,6 +107,8 @@ describe('mobile game layout', () => {
     expect(gameStyles).not.toMatch(/\.action-deck__primary:not\(\.action-deck__primary--status\)/)
     expect(gameStyles).toMatch(/\.board-cell-highlight\s*\{[^}]*position:\s*absolute/s)
     expect(gameStyles).toMatch(/\.tower-decision-restore\s*\{[^}]*position:\s*absolute/s)
+    expect(gameStyles).toMatch(/\.game-ui__speed\s*\{[^}]*flex:\s*0 0 44px/s)
+    expect(gameStyles).toMatch(/@media \(max-width:\s*380px\)[\s\S]*?\.game-header\s*\{\s*gap:\s*4px/)
   })
 
   it('hides an unsupported fullscreen action and labels the active state as exit', () => {
@@ -124,13 +125,14 @@ describe('mobile game layout', () => {
       roundTiles: [],
       heldTileSuit: null,
       functionTiles: [],
-      canGambleForHonor: false,
-      honorGambleChance: null,
-      lastHonorGamble: null
+      honorDrawScheduled: false,
+      lastHonorDraw: null
     }
     const unsupportedMarkup = renderToStaticMarkup(
       <GameUI
         uiState={uiState}
+        combatSpeed={1}
+        onCycleCombatSpeed={vi.fn()}
         onResetGame={vi.fn()}
         fullscreen={{ isSupported: false, isFullscreen: false, onToggle: vi.fn() }}
       />
@@ -138,6 +140,8 @@ describe('mobile game layout', () => {
     const activeMarkup = renderToStaticMarkup(
       <GameUI
         uiState={uiState}
+        combatSpeed={3}
+        onCycleCombatSpeed={vi.fn()}
         onResetGame={vi.fn()}
         fullscreen={{ isSupported: true, isFullscreen: true, onToggle: vi.fn() }}
       />
@@ -145,5 +149,21 @@ describe('mobile game layout', () => {
 
     expect(unsupportedMarkup).not.toContain('game-ui__fullscreen')
     expect(activeMarkup).toContain('aria-label="退出全屏"')
+    expect(activeMarkup).toContain('当前战斗速度 3 倍，点击切换到 1 倍')
+  })
+
+  it('cycles combat speed through the engine-owned action', () => {
+    const cycleCombatSpeed = vi.fn()
+    const control = CombatSpeedControl({
+      combatSpeed: 1.5,
+      onCycle: cycleCombatSpeed
+    })
+    const markup = renderToStaticMarkup(control)
+
+    expect(markup).toContain('当前战斗速度 1.5 倍，点击切换到 3 倍')
+    expect(markup).toContain('1.5×')
+
+    control.props.onClick()
+    expect(cycleCombatSpeed).toHaveBeenCalledOnce()
   })
 })

@@ -22,13 +22,16 @@ import { WAVES } from '../config/waves'
 import { initializeGrid, gridToPixel } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
 import {
+  DEFAULT_COMBAT_SPEED,
+  getNextCombatSpeed,
+  scaleCombatDeltaTime
+} from '../config/gameSpeed'
+import {
   MAHJONG_SUIT_COMBAT_CONFIG,
   beginMahjongRound,
-  canGambleForMahjongHonor,
   createMahjongRandomStats,
   createMahjongTilePool,
-  getMahjongHonorGambleChance,
-  resolveMahjongHonorGamble,
+  isMahjongHonorDrawRound,
   toMahjongRoundTileViews
 } from '../config/mahjong'
 import { soundManager, type SoundType } from '../services/audio'
@@ -99,6 +102,7 @@ import {
   advanceMahjongRuntimeEffects,
   hasMahjongRuntimeEffects
 } from './mahjongRuntimeEffects'
+import { settleMahjongHand } from './mahjongRoundFlow'
 
 interface EngineUiState extends UIState {
   selectedGem: GemType | null
@@ -111,6 +115,7 @@ interface MahjongRuntimeState {
   heldTile: MahjongNumberTile | null
   functionTiles: MahjongHonor[]
   resolvingHand: boolean
+  roundNumber: number
 }
 
 interface EngineState {
@@ -192,7 +197,8 @@ function createInitialMahjongState(): MahjongRuntimeState {
     roundTiles: firstRound.roundTiles,
     heldTile: null,
     functionTiles: [],
-    resolvingHand: false
+    resolvingHand: false,
+    roundNumber: 1
   }
 }
 
@@ -201,21 +207,18 @@ function createMahjongUiState(mahjong: MahjongRuntimeState): Pick<EngineUiState,
   | 'roundTiles'
   | 'heldTileSuit'
   | 'functionTiles'
-  | 'canGambleForHonor'
-  | 'honorGambleChance'
-  | 'lastHonorGamble'
+  | 'honorDrawScheduled'
+  | 'lastHonorDraw'
 > {
   const revealDrawnSuits = mahjong.resolvingHand
-  const canGamble = mahjong.resolvingHand
-    && canGambleForMahjongHonor(mahjong.roundTiles)
   return {
     mahjongPoolCount: mahjong.pool.length,
     roundTiles: toMahjongRoundTileViews(mahjong.roundTiles, revealDrawnSuits),
     heldTileSuit: mahjong.heldTile?.suit ?? null,
     functionTiles: [...mahjong.functionTiles],
-    canGambleForHonor: canGamble,
-    honorGambleChance: canGamble ? getMahjongHonorGambleChance(mahjong.roundTiles) : null,
-    lastHonorGamble: null
+    honorDrawScheduled: mahjong.resolvingHand
+      && isMahjongHonorDrawRound(mahjong.roundNumber),
+    lastHonorDraw: null
   }
 }
 
@@ -273,6 +276,7 @@ export function useGameEngine() {
     createInitialUiState(initialMahjongStateRef.current!)
   ))
   const [hasActiveDamageNumbers, setHasActiveDamageNumbers] = useState(false)
+  const [combatSpeed, setCombatSpeed] = useState(DEFAULT_COMBAT_SPEED)
   
   // ==================== 游戏对象状态(不触发重渲染,高频更新) ====================
   const gameStateRef = useRef<EngineState>(null!)
@@ -498,57 +502,30 @@ export function useGameEngine() {
 
     const state = gameStateRef.current
     if (!state.mahjong.resolvingHand) return false
-    const selected = state.mahjong.roundTiles.find(resource => resource.id === tileId)
-    if (!selected) return false
+    const result = settleMahjongHand({
+      pool: state.mahjong.pool,
+      roundTiles: state.mahjong.roundTiles,
+      selectedTileId: tileId,
+      functionTiles: state.mahjong.functionTiles,
+      roundNumber: state.mahjong.roundNumber
+    })
+    if (!result.ok) return false
 
-    state.mahjong.heldTile = selected.tile
-    state.mahjong.pool.push(...state.mahjong.roundTiles
-      .filter(resource => resource.id !== tileId)
-      .map(resource => resource.tile))
-    state.mahjong.roundTiles = []
+    state.mahjong.pool = result.pool
+    state.mahjong.roundTiles = result.roundTiles
+    state.mahjong.heldTile = result.heldTile
+    state.mahjong.functionTiles = result.functionTiles
     state.mahjong.resolvingHand = false
 
     setUiState(prev => ({
       ...prev,
       gameStatus: 'ready',
-      heldTileSuit: selected.tile.suit,
+      heldTileSuit: result.heldTile.suit,
       roundTiles: [],
-      mahjongPoolCount: state.mahjong.pool.length,
-      canGambleForHonor: false,
-      honorGambleChance: null,
-      lastHonorGamble: null
-    }))
-    return true
-  }, [uiState.gameStatus])
-
-  const gambleForMahjongHonor = useCallback(() => {
-    if (uiState.gameStatus !== 'resolving_hand') return false
-
-    const state = gameStateRef.current
-    if (
-      !state.mahjong.resolvingHand
-      || !canGambleForMahjongHonor(state.mahjong.roundTiles)
-    ) {
-      return false
-    }
-
-    const result = resolveMahjongHonorGamble(state.mahjong.roundTiles)
-    state.mahjong.pool.push(...state.mahjong.roundTiles.map(resource => resource.tile))
-    state.mahjong.roundTiles = []
-    state.mahjong.heldTile = null
-    state.mahjong.resolvingHand = false
-    if (result.honor) state.mahjong.functionTiles.push(result.honor)
-
-    setUiState(prev => ({
-      ...prev,
-      gameStatus: 'ready',
-      heldTileSuit: null,
-      roundTiles: [],
-      functionTiles: [...state.mahjong.functionTiles],
-      mahjongPoolCount: state.mahjong.pool.length,
-      canGambleForHonor: false,
-      honorGambleChance: null,
-      lastHonorGamble: result.success ? 'success' : 'failure'
+      functionTiles: [...result.functionTiles],
+      mahjongPoolCount: result.pool.length,
+      honorDrawScheduled: false,
+      lastHonorDraw: result.honorDrawResult
     }))
     return true
   }, [uiState.gameStatus])
@@ -1387,12 +1364,18 @@ export function useGameEngine() {
    */
   const update = useCallback((deltaTime: number) => {
     const state = gameStateRef.current
+    const frameDeltaTime = uiState.gameStatus === 'playing'
+      ? scaleCombatDeltaTime(deltaTime, combatSpeed)
+      : deltaTime
     const hadActiveDamageNumbers = state.damageNumbers.length > 0
-    state.damageNumbers = advanceDamageNumbers(state.damageNumbers, deltaTime)
+    state.damageNumbers = advanceDamageNumbers(state.damageNumbers, frameDeltaTime)
     state.mahjongPresentationEvents = state.mahjongPresentationEvents
       .map(event => ({
         ...event,
-        elapsedMs: Math.min(event.durationMs, event.elapsedMs + Math.max(0, deltaTime))
+        elapsedMs: Math.min(
+          event.durationMs,
+          event.elapsedMs + Math.max(0, frameDeltaTime)
+        )
       }))
       .filter(event => event.elapsedMs < event.durationMs)
     if (hadActiveDamageNumbers && state.damageNumbers.length === 0) {
@@ -1401,11 +1384,11 @@ export function useGameEngine() {
 
     if (uiState.gameStatus !== 'playing') return
     
-    gameStateRef.current.gameTime += deltaTime
-    spawnEnemies(deltaTime)
-    updateEnemies(deltaTime)
+    gameStateRef.current.gameTime += frameDeltaTime
+    spawnEnemies(frameDeltaTime)
+    updateEnemies(frameDeltaTime)
     processTowerAttacks()
-    updateBullets(deltaTime)
+    updateBullets(frameDeltaTime)
     
     // 检查波次是否完成
     if (gameStateRef.current.waveInProgress) {
@@ -1431,6 +1414,7 @@ export function useGameEngine() {
           state.mahjong.roundTiles = nextRound.roundTiles
           state.mahjong.heldTile = null
           state.mahjong.resolvingHand = false
+          state.mahjong.roundNumber += 1
         }
         
         setUiState(prev => {
@@ -1450,7 +1434,15 @@ export function useGameEngine() {
         console.log(`第${uiState.wave}波完成!`)
       }
     }
-  }, [uiState.gameStatus, uiState.wave, spawnEnemies, updateEnemies, processTowerAttacks, updateBullets])
+  }, [
+    combatSpeed,
+    uiState.gameStatus,
+    uiState.wave,
+    spawnEnemies,
+    updateEnemies,
+    processTowerAttacks,
+    updateBullets
+  ])
   
   // ==================== Render函数 ====================
 
@@ -1490,6 +1482,10 @@ export function useGameEngine() {
       : prev)
   }, [])
 
+  const cycleCombatSpeed = useCallback(() => {
+    setCombatSpeed(previous => getNextCombatSpeed(previous))
+  }, [])
+
   const resetGame = useCallback(() => {
     const grid = initializeGrid()
     const mahjong = createInitialMahjongState()
@@ -1519,11 +1515,13 @@ export function useGameEngine() {
       mahjongAttackSequence: 0
     }
     setHasActiveDamageNumbers(false)
+    setCombatSpeed(DEFAULT_COMBAT_SPEED)
     setUiState(createInitialUiState(mahjong))
   }, [calculatePath])
   
   return {
     uiState,
+    combatSpeed,
     gameStateRef,
     selectRoundTile,
     previewTowerPlacement,
@@ -1531,13 +1529,13 @@ export function useGameEngine() {
     placeTower,
     finalizeTowers,
     keepMahjongHand,
-    gambleForMahjongHonor,
     synthesizeMahjong,
     attachMahjongHonor,
     removeMahjongWall,
     startWave,
     pause,
     resume,
+    cycleCombatSpeed,
     resetGame
   }
 }

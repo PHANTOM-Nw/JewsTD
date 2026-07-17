@@ -8,7 +8,6 @@ import type {
   MahjongRoundTile,
   MahjongRoundTileView,
   MahjongSuit,
-  MahjongSuitMatchTier,
   MahjongTileId
 } from '../types/game'
 
@@ -17,6 +16,8 @@ export const MAHJONG_RANKS: readonly MahjongRank[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 export const MAHJONG_HONORS: readonly MahjongHonor[] = ['red', 'green', 'white']
 export const MAHJONG_DRAWS_PER_ROUND = 5
 export const MAHJONG_BUILDS_PER_ROUND = 3
+export const MAHJONG_HONOR_DRAW_INTERVAL_ROUNDS = 2
+export const MAHJONG_HONOR_DRAW_SUCCESS_CHANCE = .5
 
 export const MAHJONG_SUIT_LABELS: Record<MahjongSuit, string> = {
   characters: '万',
@@ -372,45 +373,16 @@ export function getMahjongTileName(tile: Pick<MahjongNumberTile, 'suit' | 'rank'
   return `${MAHJONG_CHARACTER_NUMERALS[tile.rank]}${MAHJONG_SUIT_LABELS[tile.suit]}`
 }
 
-export function canGambleForMahjongHonor(roundTiles: readonly MahjongRoundTile[]): boolean {
-  return roundTiles.length === 3
-    && roundTiles.filter(resource => resource.source === 'hand').length === 1
-    && roundTiles.filter(resource => resource.source === 'draw').length === 2
+export function isMahjongHonorDrawRound(roundNumber: number): boolean {
+  return Number.isInteger(roundNumber)
+    && roundNumber > 0
+    && roundNumber % MAHJONG_HONOR_DRAW_INTERVAL_ROUNDS === 0
 }
 
-/** 越同花色成功率越高：3 花色 50%、2 同 75%、全同 100%。 */
-export const MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE: Record<MahjongSuitMatchTier, number> = {
-  mixed: .5,
-  twoMatching: .75,
-  allMatching: 1
-}
-
-export function classifyMahjongSuitMatch(
-  roundTiles: readonly MahjongRoundTile[]
-): MahjongSuitMatchTier {
-  const distinctSuits = new Set(roundTiles.map(resource => resource.tile.suit)).size
-  if (distinctSuits <= 1) return 'allMatching'
-  if (distinctSuits === 2) return 'twoMatching'
-  return 'mixed'
-}
-
-export function getMahjongHonorGambleChance(
-  roundTiles: readonly MahjongRoundTile[]
-): number {
-  if (!canGambleForMahjongHonor(roundTiles)) return 0
-  return MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE[classifyMahjongSuitMatch(roundTiles)]
-}
-
-export function resolveMahjongHonorGamble(
-  roundTiles: readonly MahjongRoundTile[],
+export function resolveMahjongHonorDraw(
   random: () => number = Math.random
 ): { success: boolean; honor: MahjongHonor | null } {
-  if (!canGambleForMahjongHonor(roundTiles)) {
-    return { success: false, honor: null }
-  }
-
-  const chance = MAHJONG_HONOR_GAMBLE_SUCCESS_CHANCE[classifyMahjongSuitMatch(roundTiles)]
-  if (clampRandom(random()) >= chance) {
+  if (clampRandom(random()) >= MAHJONG_HONOR_DRAW_SUCCESS_CHANCE) {
     return { success: false, honor: null }
   }
 

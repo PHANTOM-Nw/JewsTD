@@ -10,10 +10,12 @@ main.tsx
       └─ game/components/TowerDefenseGame.tsx
           ├─ BuildPanel / MahjongActivationDecision
           ├─ MahjongSynthesisDialog / MahjongWallDetail
+          ├─ MahjongTowerInspection / boardInteraction
           ├─ GameCanvas / GameUI
           └─ game/engine/useGameEngine.ts
-              ├─ config/mahjong.ts + config/economy.ts
+              ├─ config/mahjong.ts + config/economy.ts + config/gameSpeed.ts
               ├─ engine/mahjongStats.ts
+              ├─ engine/mahjongRoundFlow.ts
               ├─ engine/mahjongSynthesis.ts
               ├─ engine/mahjongEngineActions.ts
               ├─ engine/mahjongWalls.ts
@@ -34,22 +36,27 @@ main.tsx
 - `uiState` 使用 React state，保存剩余建造次数、金币、矿坑生命、波次、阶段，以及经过信息裁剪的牌槽、手牌花色、功能牌等需要触发界面更新的数据。
 - `gameStateRef` 保存敌人、塔、子弹、伤害数字、网格、路径、预览、生成队列、战斗计时，以及完整麻将实体状态等高频或受保护数据，避免每帧 React 重渲染，也避免把暗牌实体直接交给 UI。
 
+战斗速度是 `useGameEngine` 持有并公开给界面的低频 React 状态。它跨波次保留，重开恢复 1×；组件只能调用引擎暴露的循环切档动作，不能直接修改战斗时钟。
+
+塔查看是 `TowerDefenseGame` 的局部展示状态，只保存 `inspectedTowerId`，每次渲染都从 `gameStateRef.current.towers` 与 `storedTowerIds` 重新解析当前实体，避免合成替换塔对象后继续显示陈旧引用。`boardInteraction.ts` 以纯函数区分三选一、准备阶段合成、战斗查看、中發选塔、墙体和清空选择；它不修改引擎状态。
+
 麻将运行时子状态包括：
 
 - `pool`：当前可摸的实体数牌。
 - `roundTiles`：本回合新牌与可能带入的旧手牌，内部保留完整实体，向 UI 只投影允许公开的信息。
 - `heldTile`：最多一张跨回合手牌。
-- `functionTiles`：通过赌博获得、尚未使用的中發白。
-- `resolvingHand`：布尔标记，表示当前处于 `resolving_hand` 阶段——进入即公开剩余牌花色，等待玩家留牌或赌博。
+- `functionTiles`：通过定期抽取获得、尚未使用的中發白。
+- `resolvingHand`：布尔标记，表示当前处于 `resolving_hand` 阶段——进入即公开剩余牌花色，等待玩家保留 1 张手牌。
+- `roundNumber`：从 1 开始的麻将建造轮编号，用于在第 2、4、6、8、10、12 轮调度固定 50% 的独立功能牌抽取。
 
-组件不能直接修改这些状态。`TowerDefenseGame` 只调用引擎动作，例如拖放、激活、留牌、赌博、合成、中发附着、拆墙、开波、暂停和重开。
+组件不能直接修改这些状态。`TowerDefenseGame` 只调用引擎动作，例如拖放、激活、留牌、合成、中发附着、拆墙、开波、暂停、战斗变速和重开；偶数轮功能牌抽取由留牌事务自动结算。
 
 ## 回合状态机
 
 ```text
 building ──放满3张──> deciding ──激活1张──> resolving_hand
     ▲                                                │
-    │                                                └─留牌或赌博──> ready
+    │                                                └─留1张；偶数轮自动抽取──> ready
     │                                                                    │
     └────────────────────── 非最终波结算 <── playing <──开波─────────────┘
                                                   │  ▲
@@ -87,7 +94,9 @@ victory/game_over ──重新开始──> building
 
 ### 配置与属性
 
-`config/mahjong.ts` 集中保存牌池构造、牌面注册表、隐藏视图、随机属性区间、面子倍率、花色机制和中发白参数。`config/economy.ts` 保存 50 起始金币、100 普通牌墙拆除费和 50 纯墙拆除费等经济数值。
+`config/mahjong.ts` 集中保存牌池构造、牌面注册表、隐藏视图、随机属性区间、面子倍率、花色机制和中发白参数。`config/economy.ts` 保存 50 起始金币、100 普通牌墙拆除费和 50 纯墙拆除费等经济数值。`config/gameSpeed.ts` 保存 1×、1.5×、3× 战斗档位、默认档位和纯切档/时间缩放规则。
+
+`mahjongRoundFlow.ts` 以纯事务处理剩余牌：始终保留玩家选中的实体、只把其余实体回池，并在偶数建造轮独立结算功能牌抽取。抽取结果不会改变 `heldTile` 或 108 张数牌的实体归属。
 
 `mahjongStats.ts` 从不可变主动来源重算塔属性：伤害与距离取算术平均，攻击间隔先换算频率求平均，再应用产物最终倍率。它不会接收已经放大的上一级面板值，从接口上避免倍率叠乘。
 
@@ -106,11 +115,11 @@ victory/game_over ──重新开始──> building
 - 發按花色提供处决、条的同目标攻频层数或筒的眩晕。
 - 视觉子弹数量与语义命中分离，避免顺子三发对同一目标重复结算状态。
 
-`mahjongRuntimeEffects.ts` 使用绝对游戏时间推进毒、灼烧、减速和眩晕；`useGameEngine` 把结果同步到敌人移动字段、伤害数字与 Canvas 状态反馈。暂停不运行帧更新，因此效果计时一并冻结；波次结束清空本波目标状态和条的连续攻击层数。
+`mahjongRuntimeEffects.ts` 使用绝对游戏时间推进毒、灼烧、减速和眩晕；`useGameEngine` 把结果同步到敌人移动字段、伤害数字与 Canvas 状态反馈。只有 `playing` 帧会按所选档位统一缩放战斗 delta；暂停不运行帧更新，因此效果计时一并冻结。波次结束清空本波目标状态和条的连续攻击层数。
 
 ## 一帧的主要流程
 
-1. `useGameLoop` 计算并限制 delta time。
+1. `useGameLoop` 计算并限制真实 delta time；引擎只在 `playing` 时按 1×、1.5× 或 3× 派生统一战斗 delta。
 2. 引擎生成到期敌人并处理入口净空。
 3. 先推进旧兼容效果和麻将毒/灼烧，再更新减速与眩晕计时。
 4. 统一计算敌人自由位移意图、队列阻挡与有限推动。
@@ -124,6 +133,8 @@ victory/game_over ──重新开始──> building
 `findPath` 将入口、中间必经点和出口拆为多段 BFS，再拼接完整路径。`evaluateBatchPlacement` 在克隆网格中验证候选格，同时保证本轮剩余建造仍有足够安全位置；`createBatchPlacementPreview` 复用同一结果，但不修改真实网格、路径或暗牌实体。
 
 Canvas 固定使用 320×400 逻辑分辨率与高分屏 backing store，CSS 负责窄屏等比缩放。Pointer Events 从实际显示区域还原逻辑坐标。候选预览使用中性几何暗牌，不读取牌面。React 与 Canvas 牌面共用 `config/mahjong.ts` 的确定性注册表。
+
+持久塔的射程圈与数值气泡由 `MahjongTowerInspection` 作为无指针事件的 React 覆盖层绘制，不进入 Canvas 战斗快照。`boardOverlay.ts` 将塔中心与实际射程从逻辑像素分别换算为 320×400 地图百分比，覆盖容器负责裁剪地图外部分。准备阶段的麻将合成工作台使用透明非模态 backdrop，因此可继续点击地图切换或关闭查看；引擎层的合成阶段校验保持不变。
 
 麻将视觉采用可组合通道：花色核心、面子标记、中红色外层、發绿色方印、目标状态和伤害数字可以叠加；顺子的视觉弹道数由攻击计划携带，机制仍只按语义命中结算。
 

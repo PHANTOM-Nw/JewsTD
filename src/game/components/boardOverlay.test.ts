@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { MAP_CONFIG } from '../config/map'
-import { getBoardCellOverlayStyle } from './boardOverlay'
+import {
+  getBoardCellOverlayStyle,
+  getBoardRangeOverlayStyle
+} from './boardOverlay'
 
 const boardWidth = MAP_CONFIG.cols * MAP_CONFIG.cellSize
 const boardHeight = MAP_CONFIG.rows * MAP_CONFIG.cellSize
@@ -29,5 +32,44 @@ describe('getBoardCellOverlayStyle', () => {
     const style = getBoardCellOverlayStyle({ row: MAP_CONFIG.rows - 1, col: MAP_CONFIG.cols - 1 })
     expect(style.width).toBe(`${(100 / MAP_CONFIG.cols).toFixed(4)}%`)
     expect(style.height).toBe(`${(100 / MAP_CONFIG.rows).toFixed(4)}%`)
+  })
+})
+
+describe('getBoardRangeOverlayStyle', () => {
+  it('maps a logical center and radius to the board percentage rectangle', () => {
+    expect(getBoardRangeOverlayStyle({ x: 100, y: 120 }, 40)).toEqual({
+      left: '18.7500%',
+      top: '20.0000%',
+      width: '25.0000%',
+      height: '20.0000%'
+    })
+  })
+
+  it('keeps equal logical diameters on the 4:5 responsive board', () => {
+    const style = getBoardRangeOverlayStyle({ x: 20, y: 20 }, 125)
+
+    expect(style).toEqual({
+      left: '-32.8125%',
+      top: '-26.2500%',
+      width: '78.1250%',
+      height: '62.5000%'
+    })
+    expect(Number.parseFloat(style.width) / 100 * boardWidth).toBe(250)
+    expect(Number.parseFloat(style.height) / 100 * boardHeight).toBe(250)
+  })
+
+  it('clamps an invalid or negative range to a zero-radius marker', () => {
+    expect(getBoardRangeOverlayStyle({ x: 160, y: 200 }, -10)).toEqual({
+      left: '50.0000%',
+      top: '50.0000%',
+      width: '0.0000%',
+      height: '0.0000%'
+    })
+    expect(getBoardRangeOverlayStyle({ x: 160, y: 200 }, Number.NaN)).toEqual({
+      left: '50.0000%',
+      top: '50.0000%',
+      width: '0.0000%',
+      height: '0.0000%'
+    })
   })
 })

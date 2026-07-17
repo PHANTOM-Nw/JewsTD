@@ -6,6 +6,7 @@ import {
 } from '@phosphor-icons/react'
 import { ECONOMY_CONFIG } from '../config/economy'
 import {
+  MAHJONG_HONOR_DRAW_SUCCESS_CHANCE,
   MAHJONG_HONOR_LABELS,
   MAHJONG_SUIT_LABELS
 } from '../config/mahjong'
@@ -18,21 +19,19 @@ import type {
 } from '../types/game'
 import { MahjongTile } from './MahjongTile'
 
+const HONOR_DRAW_PERCENT = Math.round(MAHJONG_HONOR_DRAW_SUCCESS_CHANCE * 100)
+
 interface BuildPanelProps {
-  wood: number
-  gold: number
   placedCount: number
   gameStatus: GameStatus
   roundTiles: MahjongRoundTileView[]
   heldTileSuit: MahjongSuit | null
   functionTiles: MahjongHonor[]
-  canGambleForHonor: boolean
-  honorGambleChance: number | null
-  lastHonorGamble: 'success' | 'failure' | null
+  honorDrawScheduled: boolean
+  lastHonorDraw: 'success' | 'failure' | null
   currentWave?: number
   onTilePointerDown?: (tileId: string, pointerId: number) => void
   onKeepHand?: (tileId: string) => void
-  onGambleForHonor?: () => void
   onSelectFunctionTile?: (honor: MahjongHonor) => void
   onStartWave?: () => void
   onPause?: () => void
@@ -43,13 +42,13 @@ interface BuildPanelProps {
 interface GamePhaseHintProps {
   placedCount: number
   gameStatus: GameStatus
-  canGambleForHonor: boolean
+  honorDrawScheduled: boolean
 }
 
 function getPhaseCopy(
   gameStatus: GameStatus,
   placedCount: number,
-  canGambleForHonor: boolean
+  honorDrawScheduled: boolean
 ) {
   switch (gameStatus) {
     case 'building':
@@ -65,11 +64,11 @@ function getPhaseCopy(
         detail: `激活 1 张，其余 ${ECONOMY_CONFIG.towersPerRound - 1} 张变牌墙`
       }
     case 'resolving_hand':
-      return canGambleForHonor
+      return honorDrawScheduled
         ? {
-            eyebrow: '处理手牌',
-            title: '保留手牌或赌功能牌',
-            detail: '点数保密：留 1 张或三张赌功能牌'
+            eyebrow: '处理手牌 · 功能牌轮',
+            title: '保留 1 张手牌',
+            detail: `留牌后自动以 ${HONOR_DRAW_PERCENT}% 概率抽取中／發／白`
           }
         : {
             eyebrow: '处理手牌',
@@ -96,9 +95,9 @@ function getPhaseCopy(
 export function GamePhaseHint({
   placedCount,
   gameStatus,
-  canGambleForHonor
+  honorDrawScheduled
 }: GamePhaseHintProps) {
-  const copy = getPhaseCopy(gameStatus, placedCount, canGambleForHonor)
+  const copy = getPhaseCopy(gameStatus, placedCount, honorDrawScheduled)
 
   return (
     <aside
@@ -158,27 +157,23 @@ export function FunctionTileStrip({
 }
 
 export function BuildPanel({
-  wood,
-  gold,
   placedCount,
   gameStatus,
   roundTiles,
   heldTileSuit,
   functionTiles,
-  canGambleForHonor,
-  honorGambleChance,
-  lastHonorGamble,
+  honorDrawScheduled,
+  lastHonorDraw,
   currentWave = 0,
   onTilePointerDown,
   onKeepHand,
-  onGambleForHonor,
   onSelectFunctionTile,
   onStartWave,
   onPause,
   onResume,
   onReset
 }: BuildPanelProps) {
-  const copy = getPhaseCopy(gameStatus, placedCount, canGambleForHonor)
+  const copy = getPhaseCopy(gameStatus, placedCount, honorDrawScheduled)
   const disabledStart = currentWave >= WAVES.length
 
   const beginTileDrag = (
@@ -216,7 +211,6 @@ export function BuildPanel({
     }
 
     if (gameStatus === 'resolving_hand') {
-      const gamblePercent = Math.round((honorGambleChance ?? 0) * 100)
       return (
         <div className="mahjong-hand-resolution">
           <div className="mahjong-hand-resolution__choices" aria-label="选择下一回合手牌">
@@ -236,16 +230,10 @@ export function BuildPanel({
               )
             })}
           </div>
-          {canGambleForHonor && (
-            <button
-              type="button"
-              className="mahjong-gamble"
-              onClick={onGambleForHonor}
-              aria-label={`消耗三张牌赌中發白，成功率${gamblePercent}%，只按花色判定，不泄露点数`}
-            >
-              赌中發白（成功率 {gamblePercent}%）
-              <small>三张全部回池；成功等概率获得中／發／白之一</small>
-            </button>
+          {honorDrawScheduled && (
+            <p className="mahjong-hand-resolution__honor-notice">
+              选定手牌后自动进行 {HONOR_DRAW_PERCENT}% 功能牌抽取，手牌不会被消耗。
+            </p>
           )}
         </div>
       )
@@ -284,9 +272,11 @@ export function BuildPanel({
     <section className={`build-panel action-deck action-deck--${gameStatus}`} aria-label="当前游戏阶段">
       {gameStatus !== 'resolving_hand' && renderPrimary()}
       {renderTiles()}
-      {lastHonorGamble && gameStatus === 'ready' && (
-        <p className={`mahjong-gamble-result mahjong-gamble-result--${lastHonorGamble}`}>
-          {lastHonorGamble === 'success' ? '赌博成功，已获得一张功能牌。' : '赌博未中，本次没有获得功能牌。'}
+      {lastHonorDraw && gameStatus === 'ready' && (
+        <p className={`mahjong-honor-draw-result mahjong-honor-draw-result--${lastHonorDraw}`}>
+          {lastHonorDraw === 'success'
+            ? '功能牌抽取成功，已获得一张中／發／白。'
+            : '功能牌抽取未中，本次没有获得功能牌。'}
         </p>
       )}
       {(gameStatus === 'ready' || gameStatus === 'playing' || gameStatus === 'paused') && heldTileSuit && (
@@ -301,10 +291,6 @@ export function BuildPanel({
           onSelect={onSelectFunctionTile}
         />
       )}
-      <div className="action-deck__meta" aria-label="建造资源">
-        <span>剩余建造 {wood} 次</span>
-        <span>金币 {gold}</span>
-      </div>
     </section>
   )
 }

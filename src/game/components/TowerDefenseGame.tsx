@@ -9,6 +9,7 @@ import { MahjongSynthesisDialog } from './MahjongSynthesisDialog'
 import { MahjongWallDetail } from './MahjongWallDetail'
 import { MahjongHonorDetail } from './MahjongHonorDetail'
 import { MahjongHonorAttachmentConfirm } from './MahjongHonorAttachmentConfirm'
+import { MahjongTowerInspection } from './MahjongTowerInspection'
 import { WaveCompletionNotice } from './WaveCompletionNotice'
 import type { GridCell, MahjongAttachment, MahjongHonor, Tower } from '../types/game'
 import {
@@ -18,6 +19,10 @@ import {
 import { MAP_CONFIG } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
 import { getBoardCellOverlayStyle } from './boardOverlay'
+import {
+  canInspectTowerDuringStatus,
+  getBoardClickIntent
+} from './boardInteraction'
 import { screenPointToGrid } from './canvasPointer'
 import { useElementFullscreen } from './fullscreen'
 import './TowerDefenseGame.css'
@@ -37,6 +42,7 @@ export const TowerDefenseGame: React.FC = () => {
   const fullscreen = useElementFullscreen(gameShellRef)
   const {
     uiState,
+    combatSpeed,
     gameStateRef,
     selectRoundTile,
     previewTowerPlacement,
@@ -44,13 +50,13 @@ export const TowerDefenseGame: React.FC = () => {
     placeTower,
     finalizeTowers,
     keepMahjongHand,
-    gambleForMahjongHonor,
     synthesizeMahjong,
     attachMahjongHonor,
     removeMahjongWall,
     startWave,
     pause,
     resume,
+    cycleCombatSpeed,
     resetGame
   } = useGameEngine()
 
@@ -58,6 +64,7 @@ export const TowerDefenseGame: React.FC = () => {
   const [selectedTowerForDecision, setSelectedTowerForDecision] = useState<Tower | null>(null)
   const [decisionMinimized, setDecisionMinimized] = useState(false)
   const [activeTileDrag, setActiveTileDrag] = useState<ActiveTileDrag | null>(null)
+  const [inspectedTowerId, setInspectedTowerId] = useState<string | null>(null)
   const [selectedSynthesisAnchor, setSelectedSynthesisAnchor] = useState<Tower | null>(null)
   const [selectedWall, setSelectedWall] = useState<GridCell | null>(null)
   const [pendingAttachment, setPendingAttachment] = useState<MahjongAttachment | null>(null)
@@ -68,6 +75,9 @@ export const TowerDefenseGame: React.FC = () => {
   const activeTowers = gameStateRef.current.towers.filter(tower => (
     gameStateRef.current.storedTowerIds.includes(tower.id)
   ))
+  const inspectedTower = inspectedTowerId
+    ? activeTowers.find(tower => tower.id === inspectedTowerId) ?? null
+    : null
   const mahjongWalls = gameStateRef.current.grid.flat().filter(cell => (
     cell.type === 'obstacle'
     && (cell.mahjongWallKind === 'tile' || cell.mahjongWallKind === 'pure')
@@ -163,23 +173,15 @@ export const TowerDefenseGame: React.FC = () => {
       setPendingAttachmentTarget(null)
     }
     if (!preparation) setPendingAttachment(null)
+    if (!canInspectTowerDuringStatus(uiState.gameStatus)) {
+      setInspectedTowerId(null)
+    }
   }, [uiState.gameStatus])
 
   const beginTileDrag = (tileId: string, pointerId: number) => {
     if (uiState.gameStatus !== 'building' || !selectRoundTile(tileId)) return
     setActiveTileDrag({ tileId, pointerId })
   }
-
-  const selectActiveTower = useCallback((tower: Tower) => {
-    if (pendingAttachment) {
-      setPendingAttachmentTarget({ tower, attachment: pendingAttachment })
-      return
-    }
-
-    setSelectedWall(null)
-    setSelectedSynthesisAnchor(tower)
-    setMahjongActionMessage('')
-  }, [pendingAttachment])
 
   const confirmPendingAttachment = useCallback(() => {
     if (!pendingAttachmentTarget) return
@@ -200,35 +202,47 @@ export const TowerDefenseGame: React.FC = () => {
     const { grid, towers } = gameStateRef.current
     const cell = grid[gridPos.row]?.[gridPos.col]
     if (!cell) return
+    const intent = getBoardClickIntent({
+      gameStatus: uiState.gameStatus,
+      cell,
+      existingTowerIds: towers.map(tower => tower.id),
+      storedTowerIds: gameStateRef.current.storedTowerIds,
+      currentBatchTowerIds: gameStateRef.current.currentBatchTowerIds,
+      inspectedTowerId,
+      hasPendingAttachment: pendingAttachment !== null
+    })
 
-    if (cell.type === 'tower') {
-      const existingTower = towers.find(tower => tower.id === cell.towerId)
-      if (
-        existingTower
-        && uiState.gameStatus === 'deciding'
-        && gameStateRef.current.currentBatchTowerIds.includes(existingTower.id)
-      ) {
-        setSelectedTowerForDecision(existingTower)
-      } else if (
-        existingTower
-        && (uiState.gameStatus === 'building' || uiState.gameStatus === 'ready')
-        && gameStateRef.current.storedTowerIds.includes(existingTower.id)
-      ) {
-        selectActiveTower(existingTower)
-      }
+    if (intent.kind === 'select_decision_tower') {
+      const tower = towers.find(candidate => candidate.id === intent.towerId)
+      if (tower) setSelectedTowerForDecision(tower)
       return
     }
 
-    if (
-      cell.type === 'obstacle'
-      && (cell.mahjongWallKind === 'tile' || cell.mahjongWallKind === 'pure')
-      && (uiState.gameStatus === 'building' || uiState.gameStatus === 'ready')
-    ) {
-      setSelectedSynthesisAnchor(null)
-      setSelectedWall(cell)
+    if (intent.kind === 'inspect_tower') {
+      const tower = towers.find(candidate => candidate.id === intent.towerId)
+      if (!tower) return
+      setInspectedTowerId(tower.id)
+      setSelectedWall(null)
+      setSelectedSynthesisAnchor(intent.openSynthesis ? tower : null)
       setMahjongActionMessage('')
+      return
     }
-  }, [gameStateRef, selectActiveTower, uiState.gameStatus])
+
+    if (intent.kind === 'target_attachment' && pendingAttachment) {
+      const tower = towers.find(candidate => candidate.id === intent.towerId)
+      if (!tower) return
+      setInspectedTowerId(tower.id)
+      setSelectedWall(null)
+      setSelectedSynthesisAnchor(null)
+      setPendingAttachmentTarget({ tower, attachment: pendingAttachment })
+      return
+    }
+
+    setInspectedTowerId(null)
+    setSelectedSynthesisAnchor(null)
+    setSelectedWall(intent.kind === 'open_wall' ? intent.wall : null)
+    if (intent.kind === 'open_wall') setMahjongActionMessage('')
+  }, [gameStateRef, inspectedTowerId, pendingAttachment, uiState.gameStatus])
 
   const handleFinalizeTowers = (keepTowerId: string) => {
     if (finalizeTowers(keepTowerId)) {
@@ -244,6 +258,7 @@ export const TowerDefenseGame: React.FC = () => {
     setSelectedTowerForDecision(null)
     setDecisionMinimized(false)
     setActiveTileDrag(null)
+    setInspectedTowerId(null)
     setSelectedSynthesisAnchor(null)
     setSelectedWall(null)
     setPendingAttachment(null)
@@ -256,12 +271,14 @@ export const TowerDefenseGame: React.FC = () => {
     <div className="game-shell" ref={gameShellRef}>
       <GameUI
         uiState={uiState}
+        combatSpeed={combatSpeed}
+        onCycleCombatSpeed={cycleCombatSpeed}
         onResetGame={handleResetGame}
         phaseHint={(
           <GamePhaseHint
             placedCount={currentBatchTowers.length}
             gameStatus={uiState.gameStatus}
-            canGambleForHonor={uiState.canGambleForHonor}
+            honorDrawScheduled={uiState.honorDrawScheduled}
           />
         )}
         fullscreen={{
@@ -274,6 +291,8 @@ export const TowerDefenseGame: React.FC = () => {
       <div className="game-main">
         <div className="game-board">
           <GameCanvas onClick={handleCanvasClick} onPlacementPreviewEnd={clearPlacementPreview} />
+
+          {inspectedTower && <MahjongTowerInspection tower={inspectedTower} />}
 
           <WaveCompletionNotice gameStatus={uiState.gameStatus} currentWave={uiState.wave} />
 
@@ -315,21 +334,18 @@ export const TowerDefenseGame: React.FC = () => {
         </div>
 
         <BuildPanel
-          wood={uiState.wood}
-          gold={uiState.gold}
           placedCount={currentBatchTowers.length}
           gameStatus={uiState.gameStatus}
           roundTiles={uiState.roundTiles}
           heldTileSuit={uiState.heldTileSuit}
           functionTiles={uiState.functionTiles}
-          canGambleForHonor={uiState.canGambleForHonor}
-          honorGambleChance={uiState.honorGambleChance}
-          lastHonorGamble={uiState.lastHonorGamble}
+          honorDrawScheduled={uiState.honorDrawScheduled}
+          lastHonorDraw={uiState.lastHonorDraw}
           currentWave={uiState.wave}
           onTilePointerDown={beginTileDrag}
           onKeepHand={keepMahjongHand}
-          onGambleForHonor={gambleForMahjongHonor}
           onSelectFunctionTile={honor => {
+            setInspectedTowerId(null)
             setSelectedSynthesisAnchor(null)
             setSelectedWall(null)
             if (honor === 'white') {
@@ -350,13 +366,17 @@ export const TowerDefenseGame: React.FC = () => {
 
       {selectedSynthesisAnchor && (
         <MahjongSynthesisDialog
+          key={selectedSynthesisAnchor.id}
           gameStatus={uiState.gameStatus}
           anchorTower={selectedSynthesisAnchor}
           fieldTowers={activeTowers}
           walls={mahjongWalls}
           availableWhiteCount={uiState.functionTiles.filter(tile => tile === 'white').length}
           onConfirm={synthesizeMahjong}
-          onClose={() => setSelectedSynthesisAnchor(null)}
+          onClose={() => {
+            setSelectedSynthesisAnchor(null)
+            setInspectedTowerId(null)
+          }}
         />
       )}
 
