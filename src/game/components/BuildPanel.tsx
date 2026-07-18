@@ -175,6 +175,12 @@ export function BuildPanel({
 }: BuildPanelProps) {
   const copy = getPhaseCopy(gameStatus, placedCount, honorDrawScheduled)
   const disabledStart = currentWave >= WAVES.length
+  const showHeldTile = (
+    gameStatus === 'ready'
+    || gameStatus === 'playing'
+    || gameStatus === 'paused'
+  ) && heldTileSuit
+  const showFunctionTiles = gameStatus === 'building' || gameStatus === 'ready'
 
   const beginTileDrag = (
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -279,17 +285,21 @@ export function BuildPanel({
             : '功能牌抽取未中，本次没有获得功能牌。'}
         </p>
       )}
-      {(gameStatus === 'ready' || gameStatus === 'playing' || gameStatus === 'paused') && heldTileSuit && (
-        <div className="mahjong-held-summary">
-          <MahjongTile faceDown knownSuit={heldTileSuit} compact />
-          <span>手牌：{MAHJONG_SUIT_LABELS[heldTileSuit]}（点数未知）</span>
+      {(showHeldTile || showFunctionTiles) && (
+        <div className="mahjong-inventory-row">
+          {showHeldTile && (
+            <div className="mahjong-held-summary">
+              <MahjongTile faceDown knownSuit={heldTileSuit} compact />
+              <span>手牌：{MAHJONG_SUIT_LABELS[heldTileSuit]}（点数未知）</span>
+            </div>
+          )}
+          {showFunctionTiles && (
+            <FunctionTileStrip
+              tiles={functionTiles}
+              onSelect={onSelectFunctionTile}
+            />
+          )}
         </div>
-      )}
-      {(gameStatus === 'building' || gameStatus === 'ready') && (
-        <FunctionTileStrip
-          tiles={functionTiles}
-          onSelect={onSelectFunctionTile}
-        />
       )}
     </section>
   )

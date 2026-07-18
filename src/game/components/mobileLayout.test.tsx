@@ -11,6 +11,16 @@ vi.mock('../services/audio', () => ({
   soundManager: { setEnabled: vi.fn() }
 }))
 
+function getCssRule(styles: string, selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const matches = Array.from(
+    styles.matchAll(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`, 'g'))
+  )
+
+  expect(matches.length).toBeGreaterThan(0)
+  return matches.map(match => match[1]).join('\n')
+}
+
 describe('mobile game layout', () => {
   it('renders the five resource cards from the selected mobile concept', () => {
     const markup = renderToStaticMarkup(
@@ -109,6 +119,39 @@ describe('mobile game layout', () => {
     expect(gameStyles).toMatch(/\.tower-decision-restore\s*\{[^}]*position:\s*absolute/s)
     expect(gameStyles).toMatch(/\.game-ui__speed\s*\{[^}]*flex:\s*0 0 44px/s)
     expect(gameStyles).toMatch(/@media \(max-width:\s*380px\)[\s\S]*?\.game-header\s*\{\s*gap:\s*4px/)
+  })
+
+  it('keeps the shared inventory row compact and horizontally scrollable', () => {
+    const gameStyles = readFileSync(new URL('./TowerDefenseGame.css', import.meta.url), 'utf8')
+    const inventoryRule = getCssRule(gameStyles, '.mahjong-inventory-row')
+    const functionListRule = getCssRule(gameStyles, '.mahjong-functions > div')
+    const compactTileRule = getCssRule(
+      gameStyles,
+      '.mahjong-inventory-row .mahjong-tile--compact'
+    )
+    const functionButtonRule = getCssRule(gameStyles, '.mahjong-function-tile')
+    const buttonHeight = functionButtonRule.match(/min-height:\s*(\d+)px/)
+    const narrowMediaStart = gameStyles.indexOf('@media (max-width: 380px)')
+
+    expect(inventoryRule).toMatch(/display:\s*grid/)
+    expect(inventoryRule).toMatch(/min-width:\s*0/)
+    expect(inventoryRule).toMatch(/grid-template-columns:\s*\d+px\s+minmax\(0,\s*1fr\)/)
+    expect(functionListRule).toMatch(/flex-wrap:\s*nowrap/)
+    expect(functionListRule).toMatch(/overflow-x:\s*auto/)
+    expect(compactTileRule).toMatch(/width:\s*28px/)
+    expect(compactTileRule).toMatch(/height:\s*38px/)
+    expect(buttonHeight).not.toBeNull()
+    expect(Number(buttonHeight?.[1])).toBeGreaterThanOrEqual(44)
+    expect(narrowMediaStart).toBeGreaterThanOrEqual(0)
+
+    const narrowStyles = gameStyles.slice(narrowMediaStart)
+    const narrowCompactTileRule = getCssRule(
+      narrowStyles,
+      '.mahjong-inventory-row .mahjong-tile--compact'
+    )
+
+    expect(narrowCompactTileRule).toMatch(/width:\s*26px/)
+    expect(narrowCompactTileRule).toMatch(/height:\s*36px/)
   })
 
   it('hides an unsupported fullscreen action and labels the active state as exit', () => {

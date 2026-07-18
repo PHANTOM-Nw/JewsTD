@@ -310,8 +310,7 @@
 .action-deck--building .mahjong-tray,
 .action-deck--resolving_hand .mahjong-hand-resolution,
 .mahjong-honor-draw-result,
-.mahjong-held-summary,
-.mahjong-functions {
+.mahjong-inventory-row {
   grid-column: 1 / -1;
 }
 
@@ -509,13 +508,24 @@
 .mahjong-honor-draw-result--success { color: #397222; background: #edffd8; }
 .mahjong-honor-draw-result--failure { color: #8c431f; background: #fff0d4; }
 
+.mahjong-inventory-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 6px;
+}
+
+.mahjong-inventory-row > :only-child { grid-column: 1 / -1; }
+
 .mahjong-held-summary,
 .mahjong-functions {
   display: flex;
+  min-width: 0;
   min-height: 48px;
   align-items: center;
-  gap: 7px;
-  padding: 5px 8px;
+  gap: 5px;
+  padding: 4px 6px;
   border: 1px solid rgba(194, 121, 28, 0.42);
   border-radius: 9px;
   font-size: 10px;
@@ -523,15 +533,34 @@
   background: rgba(255, 249, 225, 0.76);
 }
 
-.mahjong-functions { justify-content: space-between; }
-.mahjong-functions > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.mahjong-held-summary span { line-height: 1.25; }
+
+.mahjong-functions { justify-content: flex-start; }
+.mahjong-functions > span { flex: 0 0 auto; }
+.mahjong-functions > div {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 1px 1px 3px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.mahjong-inventory-row .mahjong-tile--compact {
+  width: 28px;
+  height: 38px;
+}
 
 .mahjong-function-tile {
   display: inline-flex;
-  min-height: 48px;
+  min-height: 44px;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
-  padding: 3px 5px;
+  gap: 3px;
+  padding: 2px 4px;
   border: 1px solid #d2a960;
   border-radius: 8px;
   color: var(--brown);
@@ -1369,6 +1398,11 @@ button:disabled {
   .game-ui__label { font-size: 9px; }
   .game-ui__value { font-size: 13px; }
   .game-phase-hint strong { display: none; }
+  .mahjong-inventory-row { grid-template-columns: 86px minmax(0, 1fr); gap: 4px; }
+  .mahjong-inventory-row .mahjong-held-summary,
+  .mahjong-inventory-row .mahjong-functions { gap: 4px; padding: 4px; }
+  .mahjong-inventory-row .mahjong-tile--compact { width: 26px; height: 36px; }
+  .mahjong-inventory-row .mahjong-function-tile { padding-inline: 3px; }
 }
 
 @media (min-width: 700px) {

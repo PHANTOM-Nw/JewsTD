@@ -34,6 +34,14 @@ function findElement(
   return match
 }
 
+function getDirectElements(node: ReactNode): ReactElement<ElementProps>[] {
+  return Children.toArray(node).filter(isValidElement) as ReactElement<ElementProps>[]
+}
+
+function hasClass(element: ReactElement<ElementProps>, className: string) {
+  return element.props.className?.split(/\s+/).includes(className) ?? false
+}
+
 // 进入 resolving_hand 后所有剩余牌的花色都已公开，点数永远保密。
 const handTiles: MahjongRoundTileView[] = [
   {
@@ -239,6 +247,80 @@ describe('BuildPanel function tile actions', () => {
       element.props['aria-label'] === '选择中，然后选择一座激活棋子附着'
     ))
     expect(selectRed?.props.disabled).toBe(false)
+  })
+})
+
+describe('BuildPanel inventory row', () => {
+  it('groups the private held tile and a crowded function strip in one ready row', () => {
+    const panel = BuildPanel({
+      placedCount: 3,
+      gameStatus: 'ready',
+      roundTiles: [],
+      heldTileSuit: 'dots',
+      functionTiles: ['red', 'green', 'white', 'red', 'green', 'white'],
+      honorDrawScheduled: false,
+      lastHonorDraw: null,
+      currentWave: 1,
+      onSelectFunctionTile: vi.fn(),
+      onStartWave: vi.fn()
+    })
+    const inventoryRow = findElement(panel, element => (
+      hasClass(element, 'mahjong-inventory-row')
+    ))
+    const rowChildren = getDirectElements(inventoryRow?.props.children)
+    const heldSummary = rowChildren.find(element => (
+      hasClass(element, 'mahjong-held-summary')
+    ))
+    const markup = renderToStaticMarkup(panel)
+    const heldMarkup = heldSummary ? renderToStaticMarkup(heldSummary) : ''
+
+    expect(inventoryRow).not.toBeNull()
+    expect(heldSummary).toBeDefined()
+    expect(rowChildren.some(element => element.type === FunctionTileStrip)).toBe(true)
+    expect(markup.match(/class="mahjong-function-tile(?:\s|")/g)).toHaveLength(6)
+    expect(markup).toContain('aria-label="功能牌区"')
+    expect(heldMarkup).toContain('mahjong-tile--back')
+    expect(heldMarkup).toContain('mahjong-tile--known-suit')
+    expect(heldMarkup).toContain('mahjong-tile--compact')
+    expect(heldMarkup).not.toContain('mahjong-tile--face')
+    expect(heldMarkup).not.toMatch(/[一二三四五六七八九][万条筒]/)
+  })
+
+  it('keeps a single relevant inventory block in building and playing phases', () => {
+    const buildingPanel = BuildPanel({
+      placedCount: 0,
+      gameStatus: 'building',
+      roundTiles: [],
+      heldTileSuit: 'characters',
+      functionTiles: ['red'],
+      honorDrawScheduled: false,
+      lastHonorDraw: null,
+      onSelectFunctionTile: vi.fn()
+    })
+    const playingPanel = BuildPanel({
+      placedCount: 3,
+      gameStatus: 'playing',
+      roundTiles: [],
+      heldTileSuit: 'bamboo',
+      functionTiles: ['green'],
+      honorDrawScheduled: false,
+      lastHonorDraw: null,
+      onPause: vi.fn()
+    })
+    const buildingRow = findElement(buildingPanel, element => (
+      hasClass(element, 'mahjong-inventory-row')
+    ))
+    const playingRow = findElement(playingPanel, element => (
+      hasClass(element, 'mahjong-inventory-row')
+    ))
+    const buildingChildren = getDirectElements(buildingRow?.props.children)
+    const playingChildren = getDirectElements(playingRow?.props.children)
+
+    expect(buildingChildren).toHaveLength(1)
+    expect(buildingChildren[0]?.type).toBe(FunctionTileStrip)
+    expect(playingChildren).toHaveLength(1)
+    expect(hasClass(playingChildren[0], 'mahjong-held-summary')).toBe(true)
+    expect(renderToStaticMarkup(playingPanel)).not.toContain('aria-label="功能牌区"')
   })
 })
 
