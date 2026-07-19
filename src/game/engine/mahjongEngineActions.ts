@@ -9,6 +9,7 @@ import type {
   MahjongAttachment,
   MahjongHonor,
   MahjongNumberTile,
+  ScoredMahjongFormation,
   Tower
 } from '../types/game'
 import { calculateMahjongFormationStats } from './mahjongStats'
@@ -45,7 +46,12 @@ export interface SynthesizeMahjongRequest {
 }
 
 export type SynthesizeMahjongActionResult =
-  | { ok: true; towerId: string; state: MahjongEngineActionState }
+  | {
+      ok: true
+      towerId: string
+      formation: ScoredMahjongFormation
+      state: MahjongEngineActionState
+    }
   | { ok: false; reason: MahjongSynthesisFailure; state: MahjongEngineActionState }
 
 export type AttachMahjongHonorFailure =
@@ -259,7 +265,12 @@ export function applySynthesizeMahjongAction(
     pool: [...state.pool]
   }
 
-  return { ok: true, towerId: plan.anchorTowerId, state: nextState }
+  return {
+    ok: true,
+    towerId: plan.anchorTowerId,
+    formation: plan.resultState.formation,
+    state: nextState
+  }
 }
 
 export function applyAttachMahjongHonorAction(

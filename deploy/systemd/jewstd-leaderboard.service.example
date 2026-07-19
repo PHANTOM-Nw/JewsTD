@@ -1,0 +1,22 @@
+[Unit]
+Description=JewsTD leaderboard API
+After=network.target
+
+[Service]
+Type=simple
+User=__DEPLOY_USER__
+Group=__DEPLOY_USER__
+WorkingDirectory=__API_ROOT__
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/jewstd/leaderboard.env
+ExecStart=__NODE_PATH__ __API_ROOT__/server/dist/index.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=__DATA_DIR__
+
+[Install]
+WantedBy=multi-user.target

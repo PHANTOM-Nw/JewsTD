@@ -12,7 +12,7 @@
 - `reference/game-configuration.md`：配置文件入口与修改检查表。
 - `reference/pathfinding.md`：当前多段 BFS 规则和接口。
 - `development/conventions.md`：目录、代码、文档和提交约定。
-- `development/deployment.md`：`main` 分支到阿里云静态站点的自动部署与权限配置。
+- `development/deployment.md`：阿里云生产环境的首次初始化、前端与排行榜 API 日常自动部署、权限和数据持久化边界。
 - `records/README.md`：记录命名和维护方式。
 
 ## 历史归档

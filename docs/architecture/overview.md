@@ -2,13 +2,13 @@
 
 ## 总体结构
 
-项目是无后端、无持久化层的 React 单页游戏。React 负责状态驱动的界面和操作面板，Canvas 绘制地图、麻将棋子、敌人、弹道与状态效果，`requestAnimationFrame` 驱动战斗帧。
+项目由 React 单页游戏和独立 Node 排行榜 API 组成。React 负责状态驱动的界面和操作面板，Canvas 绘制地图、麻将棋子、敌人、弹道与状态效果，`requestAnimationFrame` 驱动战斗帧；Node API 使用 SQLite 持久化已提交成绩。生产环境由 Nginx 提供前端静态文件，并把同域 `/api` 转发给只监听本机地址的 API。
 
 ```text
 main.tsx
   └─ app/App.tsx
       └─ game/components/TowerDefenseGame.tsx
-          ├─ BuildPanel / MahjongActivationDecision
+          ├─ BuildPanel / MahjongActivationDecision / GameResultPanel
           ├─ MahjongSynthesisDialog / MahjongWallDetail
           ├─ MahjongTowerInspection / boardInteraction
           ├─ GameCanvas / GameUI
@@ -25,6 +25,13 @@ main.tsx
               ├─ engine/enemyMovement.ts / pathfinding/*
               ├─ rendering/canvasRenderer.ts
               └─ useGameLoop.ts
+
+src/game/services/leaderboard.ts
+  └─ same-origin /api
+      └─ server/src/app.ts
+          ├─ validation.ts + scoring.ts
+          ├─ rateLimit.ts
+          └─ database.ts → SQLite
 ```
 
 当前生产入口只装配麻将流程。旧宝石配置、类型、合成组件、素材和兼容渲染分支仍在仓库中，但不是玩家可访问的规则入口。
@@ -35,6 +42,8 @@ main.tsx
 
 - `uiState` 使用 React state，保存剩余建造次数、金币、矿坑生命、波次、阶段，以及经过信息裁剪的牌槽、手牌花色、功能牌等需要触发界面更新的数据。
 - `gameStateRef` 保存敌人、塔、子弹、伤害数字、网格、路径、预览、生成队列、战斗计时，以及完整麻将实体状态等高频或受保护数据，避免每帧 React 重渲染，也避免把暗牌实体直接交给 UI。
+
+`uiState.score` 是低频 React 状态，保存总分、击杀分、合成分及四类事件计数。敌人首次死亡和合成事务成功后分别通过纯计分函数生成新状态；分数不复用金币奖励。进入 `victory` 或 `game_over` 后终局界面使用冻结快照，重开时连同其他对局状态归零。
 
 战斗速度是 `useGameEngine` 持有并公开给界面的低频 React 状态。它跨波次保留，重开恢复 1×；组件只能调用引擎暴露的循环切档动作，不能直接修改战斗时钟。
 
@@ -67,6 +76,25 @@ playing ──第12波结算──> victory
 playing ──矿坑生命归零──> game_over
 victory/game_over ──重新开始──> building
 ```
+
+新对局开始时，前端异步向排行榜 API 申请 `runId`、短期 `submissionToken` 和 `scoringVersion`；连接失败不会阻止本地游戏。只有 `victory` 或 `game_over` 可以从终局面板提交冻结成绩。首次提交创建唯一成绩；网络重试再次发送同一 `runId` 和有效令牌时，服务端返回原成绩及其当前名次，不新增或覆盖记录。终局面板读取当前版本 Top 10，并可用 `runId` 查询本局实际名次。手动重开创建新对局，不提交未结算成绩。
+
+## 计分与排行榜边界
+
+`src/game/config/scoring.ts` 定义浏览器实时展示的 `v1` 分值和纯累加函数；`server/src/scoring.ts` 保存同版本的独立权威重算表与按波次合理计数上限。当前击杀分为基础 10、快速 20、坦克 50、Boss 500；合成分为对子 100、顺子 200、明刻 300、杠 400。每次成功合成按新产物计分，因此连续升级累计各步得分。
+
+`src/game/services/leaderboard.ts` 封装同域请求和错误转换。API 的最小契约为：
+
+- `POST /api/runs` 创建短期对局凭据并返回当前计分版本。
+- `POST /api/scores` 接收匿名名称、冻结分数明细、胜负、波次、矿坑生命、局时和客户端版本；服务端重算分项和总分后原子写入。首次写入返回 HTTP 201；同 `runId` 和有效令牌的重放返回 HTTP 200、原 `entry` 及当前 `rank`，重放载荷不会覆盖原成绩。
+- `GET /api/leaderboard?limit=10&runId=<id>` 返回当前版本榜单和可选的本人名次。
+- `GET /api/health` 检查进程、数据库和当前计分版本。
+
+SQLite 使用严格表、外键、迁移表和 `(scoring_version, total_score DESC, created_at ASC, id ASC)` 排序索引；迁移 v2 另为 run 增加 `(submitted_at, expires_at)` 索引。每次创建 run 时，插入事务会先按到期时间最多清理 100 条已过期且未提交的 run，避免单次请求执行无界删除；已经提交并关联成绩的 run 会保留。文件数据库开启 WAL、`busy_timeout` 和正常同步级别。榜单按 `scoringVersion` 隔离，同分先提交者优先。数据库、WAL 文件和备份必须位于静态与 API 发布目录之外的持久目录，日常发布只能运行向前迁移，不能替换数据库。
+
+服务端还会校验 1～16 个 Unicode 字符的匿名公开名称、短期令牌、胜负/波次关系、分项重算和按波次事件计数上限，并以唯一 `runId` 和幂等重放保证每局至多一条成绩；请求按客户端地址、方法和路径执行内存限流。令牌只保存哈希，错误令牌不能读取已提交成绩。该边界能拦截误提交和低成本篡改，但浏览器仍可伪造战斗事件，当前只承诺休闲榜，不承诺竞技级防作弊。
+
+排行榜是可降级的附加能力：API 创建、查询或提交失败时，前端展示可重试状态，但不得阻塞建造、战斗、终局分数或重新开始。由于使用同域 `/api`，浏览器不需要跨域配置；Nginx 与 API 不可用时也不会把暗牌实体或其他引擎内部状态暴露给网络层。
 
 合成、中发附着和拆墙都在纯规则层与引擎动作层再次检查阶段，只允许 `building` 和 `ready`，不能依赖按钮显隐保证权限。动作还要求锚点和主动材料已经位于 `storedTowerIds` 且网格格子确实归属该塔，因此本轮尚未完成三选一的临时塔不能参与操作。
 

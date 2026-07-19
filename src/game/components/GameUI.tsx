@@ -11,6 +11,7 @@ import {
   StackIcon,
   SpeakerHighIcon,
   SpeakerSlashIcon,
+  TrophyIcon,
   WavesIcon
 } from '@phosphor-icons/react'
 import { ECONOMY_CONFIG } from '../config/economy'
@@ -172,11 +173,17 @@ export function GameUI({
           value={uiState.mahjongPoolCount}
           icon={<StackIcon weight="duotone" />}
         />
+        <ResourceCard
+          className="game-ui__resource--score"
+          label="分数"
+          value={uiState.score.total}
+          icon={<TrophyIcon weight="duotone" />}
+        />
       </div>
 
       <p className="sr-only" aria-live="polite">
         本轮已建造{ECONOMY_CONFIG.towersPerRound - uiState.wood}次，金币{uiState.gold}，矿坑生命{uiState.mineHealth}，
-        第{uiState.wave}波，可摸牌池剩余{uiState.mahjongPoolCount}张。
+        第{uiState.wave}波，可摸牌池剩余{uiState.mahjongPoolCount}张，总分{uiState.score.total}。
       </p>
     </header>
   )

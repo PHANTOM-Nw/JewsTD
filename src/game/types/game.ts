@@ -22,8 +22,17 @@ export type MahjongHonor = 'red' | 'green' | 'white'
 /** Opaque runtime identity. The value must never encode a tile's suit, rank or copy. */
 export type MahjongTileId = string
 export type MahjongFormation = 'single' | 'pair' | 'chow' | 'pung' | 'kong'
+export type ScoredMahjongFormation = Exclude<MahjongFormation, 'single'>
 export type MahjongAttachment = Exclude<MahjongHonor, 'white'>
 export type MahjongWallKind = 'tile' | 'pure'
+
+export interface ScoreState {
+  total: number
+  killScore: number
+  synthesisScore: number
+  killsByEnemyType: Record<EnemyType, number>
+  synthesesByFormation: Record<ScoredMahjongFormation, number>
+}
 
 /** The immutable roll created when a number tile is revealed as an active source. */
 export interface MahjongRandomStats {
@@ -314,6 +323,7 @@ export interface GameState {
 export interface UIState {
   wood: number
   gold: number
+  score: ScoreState
   mineHealth: number
   maxMineHealth: number
   wave: number

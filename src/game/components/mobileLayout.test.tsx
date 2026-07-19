@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { ECONOMY_CONFIG } from '../config/economy'
+import { createInitialScoreState } from '../config/scoring'
 import { BuildPanel, GamePhaseHint } from './BuildPanel'
 import { CombatSpeedControl, GameUI } from './GameUI'
 
@@ -22,7 +23,7 @@ function getCssRule(styles: string, selector: string) {
 }
 
 describe('mobile game layout', () => {
-  it('renders the five resource cards from the selected mobile concept', () => {
+  it('renders the game resources and live score', () => {
     const markup = renderToStaticMarkup(
       <GameUI
         uiState={{
@@ -39,7 +40,8 @@ describe('mobile game layout', () => {
           heldTileSuit: null,
           functionTiles: [],
           honorDrawScheduled: false,
-          lastHonorDraw: null
+          lastHonorDraw: null,
+          score: createInitialScoreState()
         }}
         combatSpeed={1}
         onCycleCombatSpeed={vi.fn()}
@@ -59,12 +61,13 @@ describe('mobile game layout', () => {
       />
     )
 
-    expect(markup.match(/class="game-ui__resource /g)).toHaveLength(5)
+    expect(markup.match(/class="game-ui__resource /g)).toHaveLength(6)
     expect(markup).toContain('建造')
     expect(markup).toContain('矿坑生命')
     expect(markup).toContain('波次')
     expect(markup).toContain('牌池')
     expect(markup).toContain('103')
+    expect(markup).toContain('分数')
     expect(markup).not.toContain('🎮')
     expect(markup).toContain('aria-label="麻将 TD 游戏资源与快捷操作"')
     expect(markup).not.toContain('game-title')
@@ -169,7 +172,8 @@ describe('mobile game layout', () => {
       heldTileSuit: null,
       functionTiles: [],
       honorDrawScheduled: false,
-      lastHonorDraw: null
+      lastHonorDraw: null,
+      score: createInitialScoreState()
     }
     const unsupportedMarkup = renderToStaticMarkup(
       <GameUI

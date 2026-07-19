@@ -202,6 +202,10 @@ describe('applySynthesizeMahjongAction', () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
+    expect(result.formation).toBe('pair')
+    expect(result.formation).toBe(
+      result.state.towers[0].mahjongState?.formation
+    )
     expect(result.state.towers).toHaveLength(1)
     expect(result.state.storedTowerIds).toEqual([anchor.id])
     expect(result.state.towers[0].mahjongState).toMatchObject({
@@ -238,6 +242,7 @@ describe('applySynthesizeMahjongAction', () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
+    expect(result.formation).toBe('pung')
     expect(result.state.functionTiles).toEqual(['red'])
     expect(result.state.towers[0].mahjongState).toMatchObject({
       formation: 'pung',

@@ -11,13 +11,31 @@ import { MahjongHonorDetail } from './MahjongHonorDetail'
 import { MahjongHonorAttachmentConfirm } from './MahjongHonorAttachmentConfirm'
 import { MahjongTowerInspection } from './MahjongTowerInspection'
 import { WaveCompletionNotice } from './WaveCompletionNotice'
+import {
+  GameResultPanel,
+  type LeaderboardStatus,
+  type RunConnectionStatus,
+  type SubmissionStatus
+} from './GameResultPanel'
 import type { GridCell, MahjongAttachment, MahjongHonor, Tower } from '../types/game'
+import type {
+  LeaderboardEntry,
+  RunSession
+} from '../services/leaderboard'
 import {
   getMahjongTileName,
   MAHJONG_HONOR_LABELS
 } from '../config/mahjong'
 import { MAP_CONFIG } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
+import { SCORING_VERSION } from '../config/scoring'
+import {
+  assertCompatibleScoringVersion,
+  createScoreSubmission,
+  leaderboardClient,
+  submitScoreWithReconciliation
+} from '../services/leaderboard'
+import { getLeaderboardErrorMessage } from './leaderboardError'
 import { getBoardCellOverlayStyle } from './boardOverlay'
 import {
   canInspectTowerDuringStatus,
@@ -36,6 +54,8 @@ interface PendingAttachmentTarget {
   tower: Tower
   attachment: MahjongAttachment
 }
+
+const LEADERBOARD_CLIENT_VERSION = 'web-v1'
 
 export const TowerDefenseGame: React.FC = () => {
   const gameShellRef = useRef<HTMLDivElement>(null)
@@ -71,6 +91,21 @@ export const TowerDefenseGame: React.FC = () => {
   const [pendingAttachmentTarget, setPendingAttachmentTarget] = useState<PendingAttachmentTarget | null>(null)
   const [honorDetail, setHonorDetail] = useState<MahjongHonor | null>(null)
   const [mahjongActionMessage, setMahjongActionMessage] = useState('')
+  const [runSession, setRunSession] = useState<RunSession | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<RunConnectionStatus>('connecting')
+  const [connectionError, setConnectionError] = useState('')
+  const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatus>('idle')
+  const [submissionError, setSubmissionError] = useState('')
+  const [submittedRank, setSubmittedRank] = useState<number | null>(null)
+  const [leaderboardStatus, setLeaderboardStatus] = useState<LeaderboardStatus>('loading')
+  const [leaderboardEntries, setLeaderboardEntries] = useState<Array<LeaderboardEntry & { rank: number }>>([])
+  const [leaderboardSelfRank, setLeaderboardSelfRank] = useState<number | null>(null)
+  const [leaderboardError, setLeaderboardError] = useState('')
+  const [finalDurationMs, setFinalDurationMs] = useState<number | null>(null)
+  const runStartedAtRef = useRef(Date.now())
+  const runRequestSequenceRef = useRef(0)
+  const leaderboardRequestSequenceRef = useRef(0)
+  const initialRunRequestedRef = useRef(false)
 
   const activeTowers = gameStateRef.current.towers.filter(tower => (
     gameStateRef.current.storedTowerIds.includes(tower.id)
@@ -85,6 +120,66 @@ export const TowerDefenseGame: React.FC = () => {
   const decisionTowers = currentBatchTowers
     .map(towerId => gameStateRef.current.towers.find(tower => tower.id === towerId))
     .filter((tower): tower is Tower => Boolean(tower?.mahjongTile))
+
+  const requestLeaderboardRun = useCallback((newGame: boolean) => {
+    const requestSequence = runRequestSequenceRef.current + 1
+    runRequestSequenceRef.current = requestSequence
+    leaderboardRequestSequenceRef.current += 1
+    setRunSession(null)
+    setConnectionStatus('connecting')
+    setConnectionError('')
+
+    if (newGame) {
+      runStartedAtRef.current = Date.now()
+      setFinalDurationMs(null)
+      setSubmissionStatus('idle')
+      setSubmissionError('')
+      setSubmittedRank(null)
+      setLeaderboardSelfRank(null)
+    }
+
+    void leaderboardClient.createRun().then(session => {
+      if (runRequestSequenceRef.current !== requestSequence) return
+      setRunSession(assertCompatibleScoringVersion(session, SCORING_VERSION))
+      setConnectionStatus('ready')
+    }).catch(error => {
+      if (runRequestSequenceRef.current !== requestSequence) return
+      setRunSession(null)
+      setConnectionError(getLeaderboardErrorMessage(error))
+      setConnectionStatus('unavailable')
+    })
+  }, [])
+
+  useEffect(() => {
+    if (initialRunRequestedRef.current) return
+    initialRunRequestedRef.current = true
+    requestLeaderboardRun(true)
+  }, [requestLeaderboardRun])
+
+  const loadLeaderboard = useCallback(() => {
+    const requestSequence = leaderboardRequestSequenceRef.current + 1
+    leaderboardRequestSequenceRef.current = requestSequence
+    setLeaderboardStatus('loading')
+    setLeaderboardError('')
+    void leaderboardClient.getLeaderboard(runSession?.runId).then(result => {
+      if (leaderboardRequestSequenceRef.current !== requestSequence) return
+      setLeaderboardEntries(result.entries)
+      setLeaderboardSelfRank(result.self?.rank ?? null)
+      setLeaderboardStatus('success')
+    }).catch(error => {
+      if (leaderboardRequestSequenceRef.current !== requestSequence) return
+      setLeaderboardError(getLeaderboardErrorMessage(error))
+      setLeaderboardStatus('error')
+    })
+  }, [runSession?.runId])
+
+  const isFinished = uiState.gameStatus === 'game_over' || uiState.gameStatus === 'victory'
+
+  useEffect(() => {
+    if (!isFinished) return
+    setFinalDurationMs(previous => previous ?? Math.max(0, Date.now() - runStartedAtRef.current))
+    loadLeaderboard()
+  }, [isFinished, loadLeaderboard])
 
   const clientPointToGrid = useCallback((clientX: number, clientY: number) => {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null
@@ -254,6 +349,7 @@ export const TowerDefenseGame: React.FC = () => {
 
   const handleResetGame = () => {
     resetGame()
+    requestLeaderboardRun(true)
     setCurrentBatchTowers([])
     setSelectedTowerForDecision(null)
     setDecisionMinimized(false)
@@ -265,6 +361,42 @@ export const TowerDefenseGame: React.FC = () => {
     setPendingAttachmentTarget(null)
     setHonorDetail(null)
     setMahjongActionMessage('')
+  }
+
+  const handleScoreSubmit = (displayName: string) => {
+    if (!runSession || submissionStatus === 'submitting' || submissionStatus === 'success') return
+    const outcome = uiState.gameStatus
+    if (outcome !== 'game_over' && outcome !== 'victory') return
+
+    setSubmissionStatus('submitting')
+    setSubmissionError('')
+    const runRequestSequence = runRequestSequenceRef.current
+    const submission = createScoreSubmission(runSession, displayName, uiState.score, {
+      outcome,
+      wave: uiState.wave,
+      mineHealth: uiState.mineHealth,
+      durationMs: finalDurationMs ?? Math.max(0, Date.now() - runStartedAtRef.current),
+      clientVersion: LEADERBOARD_CLIENT_VERSION,
+      scoringVersion: SCORING_VERSION
+    })
+    void submitScoreWithReconciliation(leaderboardClient, submission).then(result => {
+      if (runRequestSequenceRef.current !== runRequestSequence) return
+      setSubmissionStatus('success')
+      setSubmittedRank(result.rank)
+      if (result.leaderboard) {
+        leaderboardRequestSequenceRef.current += 1
+        setLeaderboardEntries(result.leaderboard.entries)
+        setLeaderboardSelfRank(result.leaderboard.self?.rank ?? result.rank)
+        setLeaderboardStatus('success')
+        setLeaderboardError('')
+      } else {
+        loadLeaderboard()
+      }
+    }).catch(error => {
+      if (runRequestSequenceRef.current !== runRequestSequence) return
+      setSubmissionError(getLeaderboardErrorMessage(error))
+      setSubmissionStatus('error')
+    })
   }
 
   return (
@@ -403,18 +535,25 @@ export const TowerDefenseGame: React.FC = () => {
         />
       )}
 
-      {uiState.gameStatus === 'game_over' && (
-        <div className="game-result game-result--over">
-          <h2>游戏结束!</h2>
-          <p>矿坑生命归零,你坚持了 {uiState.wave} 波</p>
-        </div>
-      )}
-
-      {uiState.gameStatus === 'victory' && (
-        <div className="game-result game-result--victory">
-          <h2>胜利!</h2>
-          <p>恭喜你完成了全部 12 波!</p>
-        </div>
+      {(uiState.gameStatus === 'game_over' || uiState.gameStatus === 'victory') && (
+        <GameResultPanel
+          outcome={uiState.gameStatus}
+          wave={uiState.wave}
+          score={uiState.score}
+          connectionStatus={connectionStatus}
+          connectionError={connectionError}
+          submissionStatus={submissionStatus}
+          submissionError={submissionError}
+          submittedRank={submittedRank}
+          leaderboardStatus={leaderboardStatus}
+          leaderboardEntries={leaderboardEntries}
+          selfRank={leaderboardSelfRank}
+          leaderboardError={leaderboardError}
+          onSubmit={handleScoreSubmit}
+          onRetryConnection={() => requestLeaderboardRun(false)}
+          onReloadLeaderboard={loadLeaderboard}
+          onReset={handleResetGame}
+        />
       )}
     </div>
   )

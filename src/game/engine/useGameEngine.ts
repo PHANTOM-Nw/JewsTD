@@ -22,6 +22,11 @@ import { WAVES } from '../config/waves'
 import { initializeGrid, gridToPixel } from '../config/map'
 import { ECONOMY_CONFIG } from '../config/economy'
 import {
+  addSynthesisScore,
+  createInitialScoreState,
+  getStateAfterEnemyKill
+} from '../config/scoring'
+import {
   DEFAULT_COMBAT_SPEED,
   getNextCombatSpeed,
   scaleCombatDeltaTime
@@ -226,6 +231,7 @@ function createInitialUiState(mahjong: MahjongRuntimeState): EngineUiState {
   return {
     wood: ECONOMY_CONFIG.startingWood,
     gold: ECONOMY_CONFIG.startingGold,
+    score: createInitialScoreState(),
     mineHealth: ECONOMY_CONFIG.startingMineHealth,
     maxMineHealth: ECONOMY_CONFIG.startingMineHealth,
     wave: 0,
@@ -546,6 +552,7 @@ export function useGameEngine() {
     setUiState(prev => ({
       ...prev,
       gold: result.state.gold,
+      score: addSynthesisScore(prev.score, result.formation),
       functionTiles: [...result.state.functionTiles],
       mahjongPoolCount: result.state.pool.length
     }))
@@ -697,6 +704,16 @@ export function useGameEngine() {
     if (wasEmpty) setHasActiveDamageNumbers(true)
     return true
   }, [])
+
+  const applyEnemyDamageWithReward = useCallback((
+    enemy: Enemy,
+    damage: number
+  ) => {
+    if (!applyEnemyDamage(enemy, damage)) return false
+
+    setUiState(prev => getStateAfterEnemyKill(prev, enemy))
+    return true
+  }, [])
   
   /**
    * 更新敌人位置和状态
@@ -738,9 +755,7 @@ export function useGameEngine() {
 
         if (poisonUpdate.damage > 0) {
           queueDamageNumber(enemy, poisonUpdate.damage, 'poison')
-          if (applyEnemyDamage(enemy, poisonUpdate.damage)) {
-            setUiState(prev => ({ ...prev, gold: prev.gold + enemy.reward }))
-          }
+          applyEnemyDamageWithReward(enemy, poisonUpdate.damage)
         }
       }
 
@@ -775,9 +790,7 @@ export function useGameEngine() {
           pendingBurnDamage = 0
         }
 
-        if (totalDamage > 0 && applyEnemyDamage(enemy, totalDamage)) {
-          setUiState(prev => ({ ...prev, gold: prev.gold + enemy.reward }))
-        }
+        if (totalDamage > 0) applyEnemyDamageWithReward(enemy, totalDamage)
 
         const visualEffects = enemy.mahjongVisualEffects ?? {}
         visualEffects.poisonStacks = effectUpdate.effects.poisons.reduce(
@@ -877,7 +890,7 @@ export function useGameEngine() {
     
     // 清理到达终点或死亡的敌人
     gameStateRef.current.enemies = enemies.filter(e => !e.reachedEnd && !e.isDead)
-  }, [queueDamageNumber])
+  }, [applyEnemyDamageWithReward, queueDamageNumber])
   
   /**
    * 根据生成队列生成敌人
@@ -1096,9 +1109,7 @@ export function useGameEngine() {
     ) => {
       if (!queueDamageNumber(target, damage, damageType, critical)) return
 
-      if (applyEnemyDamage(target, damage)) {
-        setUiState(prev => ({ ...prev, gold: prev.gold + target.reward }))
-      }
+      applyEnemyDamageWithReward(target, damage)
     }
 
     const state = gameStateRef.current
@@ -1305,7 +1316,7 @@ export function useGameEngine() {
         e => e.id !== enemy.id
       )
     }
-  }, [queueDamageNumber])
+  }, [applyEnemyDamageWithReward, queueDamageNumber])
   
   /**
    * 更新子弹位置和碰撞检测

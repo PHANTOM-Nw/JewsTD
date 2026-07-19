@@ -4,10 +4,12 @@
 
 - `src/app/` 只负责应用装配，不放游戏规则。
 - `src/game/` 是完整游戏功能域；新增游戏代码优先放在其最具体的子目录。
+- `server/src/` 是排行榜 Node API，负责 HTTP 契约、输入校验、服务端计分复算、限流和 SQLite 访问；不得从浏览器代码直接导入。
 - `components/` 负责交互和展示，不能直接修改引擎内部 React state。
 - `engine/` 负责编排状态和动作；可复用的纯计算放入 `utils/` 或对应领域模块。
 - `config/` 只放可审阅的静态游戏数据和紧邻的构造函数。
 - `devtools/` 不得被生产入口导入。
+- 排行榜浏览器请求集中在 `src/game/services/leaderboard.ts`；UI 只调用服务，不直接拼装持久化或绕过引擎读取未冻结分数。
 
 ## TypeScript 与 React
 
@@ -27,11 +29,15 @@
 - 断言面向公开输入输出和状态变化；大面积快照、私有实现细节以及 `src/devtools/` 的手工检查不能代替关键行为断言。
 - 当前测试默认运行在 Node 环境。需要验证 React 组件交互时再引入浏览器模拟和 React Testing Library；Canvas 绘制仍需配合手工验证。
 
+排行榜变更还应覆盖服务端计分复算、名称与请求校验、过期/错误令牌、首次提交与有效令牌幂等重放、过期未提交 run 的有界清理、版本隔离、同分排序、Top 10 与本人名次。服务端测试使用临时或内存 SQLite，不得读写生产数据目录；请求频率、时间和令牌随机源需要固定或从公开结果断言。
+
 本地运行单次测试使用 `npm test`，开发时持续监听使用 `npm run test:watch`。
 
 ## 配置与文档
 
 - `src/game/config/` 是数值事实来源，文档只解释入口和设计意图。
+- 计分规则修改必须同步 `src/game/config/scoring.ts` 与 `server/src/scoring.ts`，同时递增双方 `scoringVersion`；旧版本成绩继续保留但不进入新版本榜单。
+- SQLite 数据库和备份属于运行数据，必须放在发布同步目录之外，不提交仓库，也不能在日常部署时删除或覆盖。
 - 当前文档放在 `product/`、`architecture/`、`reference/`、`development/`。
 - 一次性实现总结、审计和决策放在 `records/`，文件名为 `YYYY-MM-DD-topic.md`。
 - 过期生成稿移入 `records/archive/`，在顶部标明归档状态，不再持续维护。

@@ -2,8 +2,8 @@
 
 > 状态：v0.1 已实现规则
 >
-> 最近同步：2026-07-16
-> 数值事实来源：`src/game/config/mahjong.ts`、`src/game/config/economy.ts`
+> 最近同步：2026-07-19
+> 数值事实来源：`src/game/config/mahjong.ts`、`src/game/config/economy.ts`、`src/game/config/scoring.ts`
 
 本文描述当前运行时已经接入的麻将棋子随机属性、花色差异、对子/吃/碰/杠、中发白和墙体互动。基础摸牌、暗牌、三选一、手牌与定期功能牌抽取流程见 `gameplay.md`；如果早期讨论记录与本文或源码冲突，以可执行源码和类型为准。
 
@@ -28,7 +28,7 @@
 
 `deciding`、`resolving_hand`、`playing`、`paused`、`game_over` 和 `victory` 都会拒绝这些操作。`building` 中只有此前已经激活并登记为场上持久棋子的塔可以作为锚点或材料；本回合刚落地的三张候选牌不是合法材料。新选中的激活牌在走完 `deciding → resolving_hand` 后，才会于 `ready` 进入可操作集合。
 
-合成不消耗金币。拆墙消耗金币；中、發和白在成功使用后各消耗一张。
+合成不消耗金币。每次成功提交合成事务后，按本次产物获得 `v1` 合成分：对子 100、顺子 200、明刻 300、杠 400；连续升级累计每一步，预览与失败事务不计分。拆墙消耗金币；中、發和白在成功使用后各消耗一张。
 
 查看塔不属于合成或备战操作：`building`、`ready`、`playing` 和 `paused` 都可点击持久塔查看基础面板、能力摘要与实际射程圈。`playing` 和 `paused` 只开放查看，不会绕过上述阶段校验开放合成或附着。
 

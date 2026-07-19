@@ -48,7 +48,7 @@
 
 .game-ui__resources {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.18fr 1.12fr 0.92fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
 }
 
@@ -83,6 +83,7 @@
 .game-ui__resource--health .game-ui__icon { color: #ec4b36; }
 .game-ui__resource--wave .game-ui__icon { color: #8f52d9; }
 .game-ui__resource--level .game-ui__icon { color: #d29213; }
+.game-ui__resource--score .game-ui__icon { color: #b06ad9; }
 .game-ui__resource--wood .game-ui__icon { color: #a7682c; }
 
 .game-ui__resource--level {
@@ -1337,11 +1338,189 @@
 }
 
 .game-result {
-  padding: 15px;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  padding: max(14px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  place-items: start center;
+  overflow-y: auto;
+  background: rgba(51, 34, 12, 0.7);
+}
+
+.game-result__card {
+  display: grid;
+  width: min(100%, 430px);
+  gap: 14px;
+  padding: 16px;
   border: 3px solid #d69a31;
   border-radius: 16px;
   background: var(--cream);
   box-shadow: var(--panel-shadow);
+}
+
+.game-result__card > header {
+  text-align: center;
+}
+
+.game-result__card > header p,
+.game-result__card > header h2,
+.game-result__submission p,
+.game-result__leaderboard p {
+  margin: 0;
+}
+
+.game-result__card > header p {
+  color: #7a5a2b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.game-result__card > header h2 {
+  margin-top: 3px;
+  font-size: 28px;
+}
+
+.game-result__card > header h2:focus {
+  border-radius: 8px;
+  outline: 4px solid #2e9eeb;
+  outline-offset: 4px;
+}
+
+.game-result--victory .game-result__card {
+  border-color: #d7a21e;
+  background: linear-gradient(#fff8d9, #ffe5a1);
+}
+
+.game-result__score {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.game-result__score > div {
+  display: grid;
+  gap: 4px;
+  padding: 9px 5px;
+  border: 2px solid #e4b967;
+  border-radius: 11px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.game-result__score span {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.game-result__score strong {
+  font-size: 22px;
+}
+
+.game-result__submission,
+.game-result__leaderboard {
+  display: grid;
+  gap: 8px;
+}
+
+.game-result__submission > label,
+.game-result__leaderboard h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.game-result__submission > p:first-of-type {
+  color: #765c38;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.game-result__name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.game-result__name-row input {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 2px solid #c89a53;
+  border-radius: 9px;
+  color: var(--brown);
+  font: inherit;
+  background: #fffdf3;
+}
+
+.game-result__name-row button,
+.game-result__inline-error button,
+.game-result__reset {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 2px solid #bb7514;
+  border-radius: 9px;
+  color: #5c320a;
+  font: inherit;
+  font-weight: 900;
+  background: linear-gradient(#ffd75a, #f6b326);
+}
+
+.game-result__inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.game-result__inline-error p,
+.game-result__submission-error {
+  color: #9c3026;
+  font-size: 12px;
+}
+
+.game-result__submission-success,
+.game-result__self-rank {
+  color: #28733f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.game-result__empty {
+  padding: 12px;
+  border-radius: 9px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.leaderboard-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leaderboard-list li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 7px;
+  padding: 6px 8px;
+  align-items: center;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.leaderboard-list li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-result__reset {
+  width: 100%;
+  min-height: 48px;
+  font-size: 17px;
 }
 
 .sr-only {

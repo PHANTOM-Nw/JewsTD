@@ -5,6 +5,7 @@ import type {
   MahjongFormation,
   MahjongRank,
   MahjongTowerState,
+  ScoredMahjongFormation,
   Tower
 } from '../types/game'
 import {
@@ -71,7 +72,7 @@ export interface MahjongGridPosition {
 export interface MahjongSynthesisPlan {
   anchorTowerId: string
   anchorPosition: MahjongGridPosition
-  resultState: MahjongTowerState
+  resultState: MahjongTowerState & { formation: ScoredMahjongFormation }
   consumedTowerIds: string[]
   consumedWallPositions: MahjongGridPosition[]
   pureWallPositions: MahjongGridPosition[]
@@ -434,7 +435,7 @@ export function planMahjongSynthesis(
     wall,
     whiteCount
   )
-  const resultState: MahjongTowerState = {
+  const resultState: MahjongSynthesisPlan['resultState'] = {
     formation,
     suit: anchor.state.suit,
     ranks: getResultRanks(request.recipe, anchor.state.ranks[0]),

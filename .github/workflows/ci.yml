@@ -40,12 +40,28 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Build leaderboard API
+        run: npm run build:server
+
       - name: Upload production artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: production-dist-${{ github.sha }}-${{ github.run_id }}
           path: dist/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+      - name: Upload leaderboard API artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-api-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            server/dist/
+            package.json
+            package-lock.json
           if-no-files-found: error
           overwrite: true
           retention-days: 1
@@ -57,11 +73,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      API_DEPLOY_PATH: ${{ vars.API_DEPLOY_PATH || '/opt/JewsTD/api' }}
+      API_DATABASE_PATH: ${{ vars.API_DATABASE_PATH || '/var/lib/jewstd/leaderboard.sqlite' }}
+      API_SERVICE_NAME: ${{ vars.API_SERVICE_NAME || 'jewstd-leaderboard.service' }}
+      API_HEALTH_URL: ${{ vars.API_HEALTH_URL || 'http://127.0.0.1:3001/api/health' }}
 
     steps:
       - name: Download production artifact
@@ -69,6 +92,12 @@ jobs:
         with:
           name: production-dist-${{ github.sha }}-${{ github.run_id }}
           path: dist
+
+      - name: Download leaderboard API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: production-api-${{ github.sha }}-${{ github.run_id }}
+          path: api-release
 
       - name: Validate deployment configuration
         shell: bash
@@ -100,6 +129,31 @@ jobs:
 
           if [[ ! "$DEPLOY_PATH" =~ ^/opt/JewsTD/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*/?$ ]]; then
             echo '::error::DEPLOY_PATH must be a safe directory below /opt/JewsTD/.'
+            exit 1
+          fi
+
+          if [[ ! "$API_DEPLOY_PATH" =~ ^/opt/JewsTD/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*/?$ ]]; then
+            echo '::error::API_DEPLOY_PATH must be a safe directory below /opt/JewsTD/.'
+            exit 1
+          fi
+
+          if [[ ! "$API_DATABASE_PATH" =~ ^/var/lib/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)+\.(sqlite|db)$ ]]; then
+            echo '::error::API_DATABASE_PATH must be a .sqlite or .db file below /var/lib/.'
+            exit 1
+          fi
+
+          if [[ ! "$API_SERVICE_NAME" =~ ^[A-Za-z0-9_.@-]+\.service$ ]]; then
+            echo '::error::API_SERVICE_NAME must be a valid systemd service name.'
+            exit 1
+          fi
+
+          if [[ ! "$API_HEALTH_URL" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/api/health$ ]]; then
+            echo '::error::API_HEALTH_URL must be an HTTP loopback /api/health URL.'
+            exit 1
+          fi
+
+          if [[ "${DEPLOY_PATH%/}" == "${API_DEPLOY_PATH%/}" ]]; then
+            echo '::error::DEPLOY_PATH and API_DEPLOY_PATH must be different.'
             exit 1
           fi
 
@@ -160,10 +214,37 @@ jobs:
         run: |
           set -euo pipefail
           if ! ssh jewstd-production \
-            "test -d '$DEPLOY_PATH' && test -w '$DEPLOY_PATH' && test -x '$DEPLOY_PATH' && test ! -L '$DEPLOY_PATH'"; then
-            echo '::error::DEPLOY_PATH must exist, be writable and searchable, and not be a symlink.'
+            "test -d '$DEPLOY_PATH' && test -w '$DEPLOY_PATH' && test -x '$DEPLOY_PATH' && test ! -L '$DEPLOY_PATH' && test -d '$API_DEPLOY_PATH' && test -w '$API_DEPLOY_PATH' && test -x '$API_DEPLOY_PATH' && test ! -L '$API_DEPLOY_PATH'"; then
+            echo '::error::Frontend and API deployment paths must exist, be writable and searchable, and not be symlinks.'
             exit 1
           fi
+
+      - name: Deploy and migrate leaderboard API
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync \
+            --archive \
+            --no-owner \
+            --no-group \
+            --compress \
+            --delete-delay \
+            --delay-updates \
+            --itemize-changes \
+            --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
+            -e ssh \
+            api-release/ \
+            "jewstd-production:${API_DEPLOY_PATH%/}/"
+
+          ssh jewstd-production \
+            "cd '$API_DEPLOY_PATH' && npm ci --omit=dev && DATABASE_PATH='$API_DATABASE_PATH' npm run server:migrate && sudo -n systemctl restart '$API_SERVICE_NAME' && sudo -n systemctl is-active --quiet '$API_SERVICE_NAME'"
+
+      - name: Verify leaderboard API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh jewstd-production \
+            "curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-connrefused --max-time 5 '$API_HEALTH_URL'"
 
       - name: Deploy static files
         shell: bash
