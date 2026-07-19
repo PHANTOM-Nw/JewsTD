@@ -27,7 +27,7 @@ const pureWall: GridCell = {
 }
 
 describe('MahjongWallDetail', () => {
-  it('shows the 100-gold tile return semantics', () => {
+  it('shows the 60-gold tile return semantics', () => {
     const markup = renderToStaticMarkup(
       <MahjongWallDetail
         wall={tileWall}
@@ -39,14 +39,14 @@ describe('MahjongWallDetail', () => {
     )
 
     expect(markup).toContain('六条牌墙')
-    expect(markup).toContain('100 金币')
+    expect(markup).toContain('60 金币')
     expect(markup).toContain('牌面实体返回发牌池')
     expect(markup).toContain('<dd>是</dd>')
     expect(markup).toContain('aria-modal="true"')
     expect(markup).toContain('aria-live="polite"')
   })
 
-  it('shows the 50-gold pure-wall semantics without a returned tile', () => {
+  it('shows the 30-gold pure-wall semantics without a returned tile', () => {
     const markup = renderToStaticMarkup(
       <MahjongWallDetail
         wall={pureWall}
@@ -58,7 +58,7 @@ describe('MahjongWallDetail', () => {
     )
 
     expect(markup).toContain('纯墙体')
-    expect(markup).toContain('50 金币')
+    expect(markup).toContain('30 金币')
     expect(markup).toContain('不会向牌池返还数牌')
     expect(markup).toContain('<dd>否</dd>')
   })
@@ -67,7 +67,7 @@ describe('MahjongWallDetail', () => {
     const markup = renderToStaticMarkup(
       <MahjongWallDetail
         wall={tileWall}
-        gold={99}
+        gold={59}
         gameStatus="building"
         onRemove={vi.fn(() => ({ ok: true as const, returnedTileId: 'opaque-wall' }))}
         onClose={vi.fn()}

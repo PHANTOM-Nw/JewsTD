@@ -142,16 +142,23 @@ export const MAHJONG_SUIT_COMBAT_CONFIG: Record<MahjongSuit, MahjongSuitCombatCo
   }
 }
 
-/** Final formation multipliers; upgrading never multiplies a previous formation again. */
+/**
+ * Final formation multipliers; upgrading never multiplies a previous formation again.
+ *
+ * `calculateMahjongFormationStats` 对来源牌取算术平均，所以 N 张牌合成的保本条件是
+ * `damage × attackFrequency ≥ N`。下列取值让 pair/chow/pung/kong 的实际 DPS 倍率达到
+ * 2.26/3.44/3.54/4.83，相对保本线分别有 13%/15%/18%/21% 的正收益，
+ * 余量随凑牌难度递增，合成永远不亏。
+ */
 export const MAHJONG_FORMATION_MULTIPLIERS: Record<
   MahjongFormation,
   MahjongFormationMultipliers
 > = {
   single: { damage: 1, attackFrequency: 1, attackRange: 1 },
-  pair: { damage: 1.55, attackFrequency: 1, attackRange: 1.05 },
-  chow: { damage: 2.2, attackFrequency: 1.25, attackRange: 1.15 },
-  pung: { damage: 1.8, attackFrequency: 1.2, attackRange: 1.1 },
-  kong: { damage: 2.7, attackFrequency: 1.4, attackRange: 1.2 }
+  pair: { damage: 2.15, attackFrequency: 1.05, attackRange: 1.05 },
+  chow: { damage: 2.75, attackFrequency: 1.25, attackRange: 1.15 },
+  pung: { damage: 2.95, attackFrequency: 1.2, attackRange: 1.1 },
+  kong: { damage: 3.45, attackFrequency: 1.4, attackRange: 1.2 }
 }
 
 const chowMechanics = (suit: MahjongSuit): MahjongCombatMechanics => ({

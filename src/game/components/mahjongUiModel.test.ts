@@ -159,8 +159,8 @@ describe('mahjong final UI presentation', () => {
     const state = createState('characters', 'pair')
 
     expect(getMahjongStateFinalStats(state)).toEqual({
-      damage: 46.5,
-      attackIntervalMs: 1000,
+      damage: 64.5,
+      attackIntervalMs: 1000 / 1.05,
       attackRange: 126
     })
     expect(getMahjongAbilitySummary(state)).toEqual([
@@ -174,12 +174,12 @@ describe('mahjong final UI presentation', () => {
 
     const tower = createTower(state)
     const comparison = getMahjongTowerComparisonLabel(tower)
-    expect(comparison).toContain('对子；伤害46.5；攻击间隔1000毫秒；攻击距离126')
+    expect(comparison).toContain('对子；伤害64.5；攻击间隔952毫秒；攻击距离126')
     expect(comparison).toContain('暴击15%，暴伤×2；忽略护甲25%')
     expect(comparison).not.toContain('伤害1')
 
     const actionLabel = getMahjongTowerActionLabel(tower, 'red')
-    expect(actionLabel).toContain('将中附着到三萬；对子；伤害46.5')
+    expect(actionLabel).toContain('将中附着到三萬；对子；伤害64.5')
     expect(actionLabel).toContain('听碰：缺1张三萬')
     expect(actionLabel).not.toContain('tile-0')
   })

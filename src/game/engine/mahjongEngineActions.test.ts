@@ -386,7 +386,7 @@ describe('applyAttachMahjongHonorAction', () => {
 })
 
 describe('applyRemoveMahjongWallAction', () => {
-  it('charges 100 gold and returns the exact tile wall entity to the pool', () => {
+  it('charges 60 gold and returns the exact tile wall entity to the pool', () => {
     const tile = createTile('wall-tile', 'dots', 9)
     const state = createState([], {
       grid: createGrid([]),
@@ -409,7 +409,7 @@ describe('applyRemoveMahjongWallAction', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.returnedTileId).toBe(tile.id)
-    expect(result.state.gold).toBe(100)
+    expect(result.state.gold).toBe(140)
     expect(result.state.pool).toEqual([tile])
     expect(result.state.grid[1][3]).toEqual({ row: 1, col: 3, type: 'empty' })
     expect(result.state.obstacleOrder).toEqual([])
@@ -457,9 +457,9 @@ describe('applyRemoveMahjongWallAction', () => {
     expect(nextRound.pool).not.toContain(returnedTile)
   })
 
-  it('charges 50 gold for a pure wall without creating a tile', () => {
+  it('charges 30 gold for a pure wall without creating a tile', () => {
     const state = createState([], {
-      gold: 50,
+      gold: 30,
       grid: createGrid([]),
       obstacleOrder: [{ row: 1, col: 3 }]
     })

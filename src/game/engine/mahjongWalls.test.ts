@@ -35,7 +35,7 @@ function createPureWall(): MahjongRemovableWall {
 }
 
 describe('mahjong wall removal transaction', () => {
-  it('charges 100 gold and returns a tile wall entity to the draw pool', () => {
+  it('charges 60 gold and returns a tile wall entity to the draw pool', () => {
     const pool = [createTile('pool-tile')]
     const wall = createTileWall()
 
@@ -46,13 +46,13 @@ describe('mahjong wall removal transaction', () => {
       pool
     })
 
-    expect(ECONOMY_CONFIG.mahjongTileWallRemovalGoldCost).toBe(100)
+    expect(ECONOMY_CONFIG.mahjongTileWallRemovalGoldCost).toBe(60)
     expect(result).toEqual({
       ok: true,
       plan: {
         position: { row: 3, col: 4 },
-        cost: 100,
-        nextGold: 35,
+        cost: 60,
+        nextGold: 75,
         nextPool: [pool[0], wall.mahjongTile],
         clearedCell: { row: 3, col: 4, type: 'empty' },
         returnedTile: wall.mahjongTile
@@ -62,7 +62,7 @@ describe('mahjong wall removal transaction', () => {
     expect(wall).toEqual(createTileWall())
   })
 
-  it('charges 50 gold for a pure wall and returns no number tile', () => {
+  it('charges 30 gold for a pure wall and returns no number tile', () => {
     const pool = [createTile('pool-tile')]
     const result = planMahjongWallRemoval({
       gameStatus: 'ready',
@@ -71,13 +71,13 @@ describe('mahjong wall removal transaction', () => {
       pool
     })
 
-    expect(ECONOMY_CONFIG.mahjongPureWallRemovalGoldCost).toBe(50)
+    expect(ECONOMY_CONFIG.mahjongPureWallRemovalGoldCost).toBe(30)
     expect(result).toEqual({
       ok: true,
       plan: {
         position: { row: 5, col: 6 },
-        cost: 50,
-        nextGold: 25,
+        cost: 30,
+        nextGold: 45,
         nextPool: pool,
         clearedCell: { row: 5, col: 6, type: 'empty' },
         returnedTile: null
@@ -106,7 +106,7 @@ describe('mahjong wall removal transaction', () => {
     expect(planMahjongWallRemoval({
       gameStatus: 'building',
       wall,
-      gold: 99,
+      gold: 59,
       pool
     })).toEqual({ ok: false, reason: 'insufficient_gold' })
     expect(planMahjongWallRemoval({

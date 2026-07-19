@@ -195,7 +195,7 @@ describe('mahjong v0.1 combat configuration', () => {
       multiplier: 2
     })
     expect(MAHJONG_FORMATION_MULTIPLIERS.kong).toEqual({
-      damage: 2.7,
+      damage: 3.45,
       attackFrequency: 1.4,
       attackRange: 1.2
     })

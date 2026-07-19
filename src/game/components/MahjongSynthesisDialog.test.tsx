@@ -142,8 +142,8 @@ describe('MahjongSynthesisDialog', () => {
       />
     )
 
-    expect(markup).toContain('伤害 46.5')
-    expect(markup).toContain('攻击间隔 1000ms')
+    expect(markup).toContain('伤害 64.5')
+    expect(markup).toContain('攻击间隔 952ms')
     expect(markup).toContain('攻击距离 126.0')
     expect(markup).toContain('继承：中')
     expect(markup).toContain('消耗主动棋子 1 座')
