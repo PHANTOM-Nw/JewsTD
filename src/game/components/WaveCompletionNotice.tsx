@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { CheckCircleIcon } from '@phosphor-icons/react'
 import { WAVES } from '../config/waves'
 import { getCompletedWaveForNotice } from '../engine/gameFlow'
 import type { GameStatus } from '../types/game'
+import { scheduleWaveCompletionNoticeDismissal } from './waveCompletionNoticeLifecycle'
 
 interface WaveCompletionNoticeProps {
   gameStatus: GameStatus
@@ -17,8 +19,23 @@ export function WaveCompletionNotice({
     currentWave,
     WAVES.length
   )
+  const [visibleCompletedWave, setVisibleCompletedWave] = useState(completedWave)
 
-  if (completedWave === null) return null
+  useEffect(() => {
+    if (completedWave === null) {
+      setVisibleCompletedWave(null)
+      return
+    }
+
+    setVisibleCompletedWave(completedWave)
+    return scheduleWaveCompletionNoticeDismissal(() => {
+      setVisibleCompletedWave(visibleWave => (
+        visibleWave === completedWave ? null : visibleWave
+      ))
+    })
+  }, [completedWave])
+
+  if (completedWave === null || visibleCompletedWave === null) return null
 
   return (
     <div
@@ -33,8 +50,8 @@ export function WaveCompletionNotice({
         weight="fill"
       />
       <div>
-        <strong>第 {completedWave} 波完成！</strong>
-        <span>矿坑守住了，准备迎接第 {completedWave + 1} 波。</span>
+        <strong>第 {visibleCompletedWave} 波完成！</strong>
+        <span>矿坑守住了，准备迎接第 {visibleCompletedWave + 1} 波。</span>
       </div>
     </div>
   )

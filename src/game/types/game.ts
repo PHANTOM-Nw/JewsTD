@@ -19,10 +19,72 @@ export type EnemyType = 'basic' | 'fast' | 'tank' | 'boss'
 export type MahjongSuit = 'characters' | 'bamboo' | 'dots'
 export type MahjongRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 export type MahjongHonor = 'red' | 'green' | 'white'
+/** Opaque runtime identity. The value must never encode a tile's suit, rank or copy. */
+export type MahjongTileId = string
+export type MahjongFormation = 'single' | 'pair' | 'chow' | 'pung' | 'kong'
+export type MahjongAttachment = Exclude<MahjongHonor, 'white'>
+export type MahjongWallKind = 'tile' | 'pure'
+
+/** The immutable roll created when a number tile is revealed as an active source. */
+export interface MahjongRandomStats {
+  damage: number
+  attackIntervalMs: number
+  attackRange: number
+}
+
+export interface MahjongCombatMechanics {
+  crit?: {
+    chance: number
+    multiplier: number
+  }
+  armorIgnoreRatio?: number
+  poison?: {
+    damagePerSecond: number
+    durationMs: number
+    maxStacks: number
+  }
+  slow?: {
+    ratio: number
+    durationMs: number
+  }
+  splash?: {
+    radius: number
+    damageRatio: number
+  }
+  attackFrequencyMultiplier?: number
+  projectileCount?: number
+  maxTargets?: number
+}
+
+export interface MahjongActiveSource {
+  tileId: MahjongTileId
+  originalStats: MahjongRandomStats
+}
+
+/**
+ * Mahjong-specific state carried by a single tile or a composite tower.
+ * `containedTileIds` tracks physical number tiles; white catalysts are represented
+ * by `whiteSlotIndices` (the rank positions they fill) and never enter the
+ * 108-tile entity set.
+ */
+export interface MahjongTowerState {
+  formation: MahjongFormation
+  suit: MahjongSuit
+  ranks: MahjongRank[]
+  containedTileIds: MahjongTileId[]
+  activeSources: MahjongActiveSource[]
+  attachments: MahjongAttachment[]
+  /**
+   * Ascending, de-duplicated rank-slot indices (aligned with `ranks`) that a white
+   * catalyst fills. Its length is the white count and is always < the formation
+   * size, so `containedTileIds.length === ranks.length − whiteSlotIndices.length`.
+   */
+  whiteSlotIndices?: readonly number[]
+}
 
 /** 108 张实体数牌中的一张；copy 用于区分同牌面的四个实体。 */
 export interface MahjongNumberTile {
-  id: string
+  id: MahjongTileId
   suit: MahjongSuit
   rank: MahjongRank
   copy: 1 | 2 | 3 | 4
@@ -93,6 +155,11 @@ export interface Enemy {
   }>
   isStunned?: boolean
   stunTimer?: number
+  mahjongVisualEffects?: {
+    armorBreakTimer?: number
+    poisonStacks?: number
+    burnTimer?: number
+  }
 }
 
 // 防御塔类
@@ -101,6 +168,7 @@ export interface Tower {
   gemType?: GemType           // 基础宝石类型
   specialType?: SpecialTowerType  // 特殊塔类型
   mahjongTile?: MahjongNumberTile // 麻将玩法中的准确实体牌面
+  mahjongState?: MahjongTowerState // 麻将单牌或合成塔的实体、属性来源与附着
   level: GemLevel             // 等级
   gridPosition: { row: number; col: number }
   position: Position
@@ -145,9 +213,37 @@ export interface Bullet {
   stunChance?: number
   stunDuration?: number
   pierce?: boolean
+  mahjongVisual?: {
+    suit: MahjongSuit
+    formation: MahjongFormation
+    attachments: MahjongAttachment[]
+    cycleId: string
+    projectileCount: number
+    /** Combat-clock timestamp used only to stagger visual sub-projectiles. */
+    attackStartedAtMs?: number
+  }
 }
 
-export type DamageNumberType = Bullet['damageType'] | 'poison'
+/**
+ * A short-lived, presentation-only record emitted after one semantic Mahjong hit.
+ * It must never be read by combat resolution; `projectileCount` only controls the
+ * number and rhythm of visual pulses for an already-resolved hit.
+ */
+export interface MahjongPresentationEvent {
+  id: string
+  position: Position
+  suit: MahjongSuit
+  formation: MahjongFormation
+  attachments: MahjongAttachment[]
+  projectileCount: number
+  startedAtGameTimeMs: number
+  elapsedMs: number
+  durationMs: number
+  executed: boolean
+  stunTriggered: boolean
+}
+
+export type DamageNumberType = Bullet['damageType'] | 'poison' | 'burn'
 
 export interface DamageNumber {
   id: string
@@ -178,6 +274,7 @@ export interface GridCell {
   type: 'empty' | 'tower' | 'obstacle' | 'mine' | 'start' | 'end'
   towerId?: string  // 如果有塔,记录塔的ID
   mahjongTile?: MahjongNumberTile // 牌墙保留被锁住的实体牌身份
+  mahjongWallKind?: MahjongWallKind // tile 含实体牌；pure 只保留阻路拓扑
 }
 
 // 波次敌人配置
@@ -206,7 +303,7 @@ export interface GameState {
   towers: Tower[]
   bullets: Bullet[]
   grid: GridCell[][]     // 地图网格
-  storedTowers: Tower[]  // 场上跨波次保留塔的合成索引
+  storedTowerIds: string[]  // 场上跨波次保留塔的唯一对象索引
   gameStatus: GameStatus
   selectedGem: GemType | null  // 当前选中的宝石类型
   currentPath: { row: number; col: number }[] | null  // 当前BFS路径
@@ -227,6 +324,6 @@ export interface UIState {
   roundTiles: MahjongRoundTileView[]
   heldTileSuit: MahjongSuit | null
   functionTiles: MahjongHonor[]
-  canGambleForHonor: boolean
-  lastHonorGamble: 'success' | 'failure' | null
+  honorDrawScheduled: boolean
+  lastHonorDraw: 'success' | 'failure' | null
 }
